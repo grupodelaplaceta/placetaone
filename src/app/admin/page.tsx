@@ -1,13 +1,12 @@
 "use client";
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+import { sb } from "@/lib/browser";
 type D = { alerts: { alerta: string; n: number }[]; banks: { code: string; name: string; status: string }[]; audit: { id: number; action: string; entity: string; entity_id: string; at: string }[]; formats: { kind: string; version: number; prefix: string }[] };
 export default function Admin() {
   const [d, setD] = useState<D | null>(null); const [msg, setMsg] = useState("");
   const login = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); const f = new FormData(e.currentTarget);
-    const { data, error } = await sb.auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) });
+    const { data, error } = await sb().auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) });
     if (error || !data.session) return setMsg(error?.message ?? "Error");
     const r = await fetch("/api/admin/overview", { headers: { authorization: `Bearer ${data.session.access_token}` } });
     r.ok ? setD(await r.json()) : setMsg((await r.json()).error);

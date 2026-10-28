@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+import { sb } from "@/lib/browser";
 // Plantillas de cada operación de Administración (el servidor añade p_actor y valida rol)
 const T: Record<string, object> = {
   plone27_open_bank: { p_name: "Banco Nuevo" },
@@ -26,7 +25,7 @@ const T: Record<string, object> = {
 export default function Console() {
   const [tok, setTok] = useState(""); const [fn, setFn] = useState("plone27_open_bank"); const [body, setBody] = useState(JSON.stringify(T.plone27_open_bank, null, 2)); const [out, setOut] = useState("");
   const login = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const f = new FormData(e.currentTarget);
-    const { data, error } = await sb.auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) }); error ? setOut(error.message) : setTok(data.session!.access_token); };
+    const { data, error } = await sb().auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) }); error ? setOut(error.message) : setTok(data.session!.access_token); };
   const run = async () => {
     let args; try { args = JSON.parse(body); } catch { return setOut("JSON inválido"); }
     if (!confirm(`Ejecutar ${fn}?`)) return;

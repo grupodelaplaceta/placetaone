@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+import { sb } from "@/lib/browser";
 type S = { key: string; category: string; description: string; vtype: string; allowed: string[] | null; min_v: number | null; max_v: number | null; value: unknown; sensitive: boolean; bank_overridable: boolean; version: number };
 type C = { id: string; key: string; bank_id: string | null; new_value: unknown; old_value: unknown; reason: string };
 export default function Settings() {
@@ -11,7 +10,7 @@ export default function Settings() {
   const call = async (fn: string, body: object) => { const r = await fetch(`/api/rpc/${fn}`, { method: "POST", headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json(); setMsg(r.ok ? "Hecho" : j.error); if (r.ok) load(); };
   const login = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const f = new FormData(e.currentTarget);
-    const { data, error } = await sb.auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) });
+    const { data, error } = await sb().auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) });
     if (error || !data.session) return setMsg(error?.message ?? "Error"); setTok(data.session.access_token); load(data.session.access_token); };
   const edit = (s: S) => { const raw = prompt(`${s.key}\n${s.description}\nValor actual: ${JSON.stringify(s.value)}${s.allowed ? "\nPermitidos: " + s.allowed.join(", ") : ""}${s.min_v !== null ? `\nRango: ${s.min_v}–${s.max_v}` : ""}`); if (raw === null) return;
     const reason = prompt("Motivo (obligatorio)"); if (!reason) return;

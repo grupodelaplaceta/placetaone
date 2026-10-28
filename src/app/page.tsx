@@ -1,8 +1,7 @@
 "use client";
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { sb } from "@/lib/browser";
 
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 type Acc = { account_id: string; name: string; kind: string; status: string; booked: number; reserved: number };
 
 export default function Home() {
@@ -14,7 +13,7 @@ export default function Home() {
   };
   const login = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); const d = new FormData(e.currentTarget);
-    const { data, error } = await sb.auth.signInWithPassword({ email: String(d.get("e")), password: String(d.get("p")) });
+    const { data, error } = await sb().auth.signInWithPassword({ email: String(d.get("e")), password: String(d.get("p")) });
     if (error || !data.session) return setMsg(error?.message ?? "Error");
     setToken(data.session.access_token); setMsg(""); load(data.session.access_token);
   };
