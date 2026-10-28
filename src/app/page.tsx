@@ -34,7 +34,7 @@ export default function Home() {
         <form onSubmit={login} style={box}><input name="e" type="email" placeholder="Email" required /> <input name="p" type="password" placeholder="Contraseña" required /> <button>Entrar</button></form>
       ) : (<>
         <section style={box}><h2>Cuentas</h2>
-          <table width="100%"><thead><tr align="left"><th>Cuenta</th><th>Tipo</th><th>Estado</th><th>Contable</th><th>Reservado</th><th>Disponible</th></tr></thead>
+          <table width="100%"><thead><tr style={{ textAlign: "left" }}><th>Cuenta</th><th>Tipo</th><th>Estado</th><th>Contable</th><th>Reservado</th><th>Disponible</th></tr></thead>
             <tbody>{accs.map(a => <tr key={a.account_id}><td>{a.name}</td><td>{a.kind}</td><td>{a.status}</td><td>{a.booked} Pz</td><td>{a.reserved} Pz</td><td><b>{a.booked - a.reserved} Pz</b></td></tr>)}</tbody></table></section>
         <form onSubmit={send} style={box}><h2>Nueva transferencia</h2>
           <select required onChange={e => setF({ ...f, from: e.target.value })}><option value="">Origen</option>{accs.map(a => <option key={a.account_id} value={a.account_id}>{a.name}</option>)}</select>{" "}

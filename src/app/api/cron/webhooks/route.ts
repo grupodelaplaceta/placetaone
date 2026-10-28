@@ -6,6 +6,7 @@ export async function GET(req: Request) {
   const db = admin();
   const { data: events } = await db.from("plone27_outbox").select("*").eq("status", "pending").order("id").limit(50);
   const { data: hooks } = await db.from("plone27_webhooks").select("*").eq("active", true);
+  const max = Number((await db.from("plone27_settings").select("value").eq("key", "webhook_max_attempts").single()).data?.value ?? 5);
   let sent = 0, failed = 0;
   for (const e of events ?? []) {
     const targets = (hooks ?? []).filter(h => e.bank_ids.includes(h.bank_id) && (h.events.includes("*") || h.events.includes(e.event)));
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
       } catch { ok = false; }
     }
     const attempts = e.attempts + 1;
-    await db.from("plone27_outbox").update({ attempts, status: ok ? "sent" : attempts >= 5 ? "failed" : "pending" }).eq("id", e.id);
+    await db.from("plone27_outbox").update({ attempts, status: ok ? "sent" : attempts >= max ? "failed" : "pending" }).eq("id", e.id);
     ok ? sent++ : failed++;
   }
   return Response.json({ sent, failed });

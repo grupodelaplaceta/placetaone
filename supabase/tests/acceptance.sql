@@ -60,8 +60,27 @@ do $$ declare bk uuid; s uuid; pa uuid; col uuid; ru uuid; v1 uuid; v2 uuid; rc 
  begin perform plone27_tax_pay_partial('p2',rc,99,me); assert false; exception when others then assert sqlerrm like 'Importe%',sqlerrm; end;
  perform plone27_tax_pay_partial('p3',rc,15,me); assert (select status from plone27_tax_receipts where id=rc)='paid','pago completo tras parciales';
  insert into plone27_tax_rule_versions(rule_id,version,method,rate,valid_from,reason,retro_mode) values(ru,2,'percent',50,current_date-1,'t','simulation') returning id into v2; update plone27_tax_rule_versions set status='published',approver=me where id=v2;
- adj:=plone27_adjust_simulate(rc,v2,me); update plone27_config set value='1' where key='dual_approval_threshold';
+ adj:=plone27_adjust_simulate(rc,v2,me); update plone27_settings set value='1' where key='dual_approval_threshold';
  begin perform plone27_adjust_approve(adj,me); assert false; exception when others then assert sqlerrm like 'Doble%',sqlerrm; end;
- perform plone27_adjust_approve(adj,other); perform plone27_adjust_execute(adj,other);
+ perform plone27_adjust_approve(adj,other); perform plone27_adjust_execute(adj,other); update plone27_settings set value='1000' where key='dual_approval_threshold';
  assert (select count(*) from plone27_outbox where event='transaction.posted')>5,'outbox'; select count(*) into n from plone27_alerts; assert n=6,'alertas';
  raise notice 'CIERRE OK'; end $$;
+do $$ declare bk uuid; s uuid; col uuid; pa uuid; ru uuid; v1 uuid; v2 uuid; rc uuid; adj uuid; ch uuid; me uuid:=gen_random_uuid(); ot uuid:=gen_random_uuid(); begin
+ select id into bk from plone27_banks where code='0001'; select id into s from plone27_accounts where name='Tesoreria'; select id into col from plone27_accounts where name='Recaud';
+ begin perform plone27_setting_propose('default_receipt_due_days','9999',null,'x',me); assert false; exception when others then assert sqlerrm like 'Fuera de los límites%',sqlerrm; end;  -- límite central
+ begin perform plone27_setting_propose('dual_approval_threshold','10',bk,'x',me); assert false; exception when others then assert sqlerrm like 'Este ajuste solo es central%',sqlerrm; end;
+ perform plone27_setting_propose('default_receipt_due_days','15',bk,'banco corto',me); assert plone27_setting('default_receipt_due_days',bk)='15' and plone27_setting('default_receipt_due_days')='30','override por entidad';
+ ch:=plone27_setting_propose('dual_approval_threshold','500',null,'más estricto',me); assert plone27_setting('dual_approval_threshold')='1000','sensible queda pendiente';
+ begin perform plone27_setting_approve(ch,true,me); assert false; exception when others then assert sqlerrm like 'El proponente%',sqlerrm; end;
+ perform plone27_setting_approve(ch,true,ot); assert plone27_setting('dual_approval_threshold')='500','aprobado y aplicado';
+ assert plone27_apply_late_penalties(me)=0,'recargo desactivado por defecto';
+ pa:=(plone27_open_account(bk,'personal','Contrib2',null,null)->>'id')::uuid;
+ insert into plone27_tax_rules(code,name,collector_account) values('IRM','t',col) returning id into ru;
+ insert into plone27_tax_rule_versions(rule_id,version,method,rate,valid_from,reason) values(ru,1,'percent',10,current_date-1,'t') returning id into v1; update plone27_tax_rule_versions set status='published',approver=me where id=v1;
+ insert into plone27_tax_rule_versions(rule_id,version,method,rate,valid_from,reason,retro_mode) values(ru,2,'percent',5,current_date-1,'t','simulation') returning id into v2; update plone27_tax_rule_versions set status='published',approver=me where id=v2;
+ rc:=(select id from plone27_tax_receipts where false); insert into plone27_tax_receipts(rule_version_id,account_id,base,amount,due_date) values(v1,pa,100,10,current_date+5) returning id into rc;
+ adj:=plone27_adjust_simulate(rc,v2,me); perform plone27_adjust_approve(adj,me);
+ begin perform plone27_adjust_execute(adj,me); assert false; exception when others then assert sqlerrm like 'Política%',sqlerrm; end;
+ perform plone27_setting_propose('unpaid_negative_adjustment_policy','"credit_note"',null,'permitir nota de crédito',me); ch:=(select id from plone27_setting_changes where key='unpaid_negative_adjustment_policy' and status='pending');
+ perform plone27_setting_approve(ch,true,ot); perform plone27_adjust_execute(adj,me); assert (select amount from plone27_tax_receipts where id=rc)=5,'nota de crédito aplicada';
+ raise notice 'CONFIG OK'; end $$;

@@ -12,3 +12,7 @@ paths:
       summary: Consulta de cuenta (saldo solo de la propia entidad)
       parameters: [{name: iban, in: path, required: true, schema: {type: string}}]
       responses: {"200": {description: OK}, "404": {description: No encontrada}}
+  /api/v1/accounts/{iban}/transactions:
+    get: {summary: "Últimos 50 movimientos (solo cuentas de la propia entidad)", parameters: [{name: iban, in: path, required: true, schema: {type: string}}], responses: {"200": {description: OK}}}
+  /api/v1/accounts/{iban}/receipts:
+    get: {summary: "Recibos fiscales internos de la cuenta", parameters: [{name: iban, in: path, required: true, schema: {type: string}}], responses: {"200": {description: OK}}}

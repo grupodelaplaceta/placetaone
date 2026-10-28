@@ -8,3 +8,4 @@
 7. Migraciones 0001–0004 + `supabase/tests/acceptance.sql` verificadas en PostgreSQL 16 (con roles/auth simulados). Contrato público: `docs/openapi.yaml`.
 8. Migraciones 0001–0005. `CRON_SECRET` en Vercel para `/api/cron/webhooks` (cron diario; en plan Pro puedes cambiarlo a cada minuto en `vercel.json`). Panel: `/admin`. CI: `.github/workflows/ci.yml`.
 9. Consola `/admin/console`, avisos `/api/cron/alerts`, pruebas `supabase/tests/{concurrency,restore}.sh`, despliegue por entornos en `docs/ENTORNOS.md`.
+10. Configuración central en `/admin/settings` (migración 0006). Rotación de claves: `POST /api/admin/clients/{id}/rotate`.
