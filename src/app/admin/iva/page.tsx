@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { dlg } from "../ui";
+import { arr } from "@/lib/safe";
 
 // Transferencias comerciales sin IVA: detección, propuesta, aprobación y reporte.
 type H = { id: string; kind: string; status: string; severity: string; amount: number; iva_due: number | null; receptor: string; pagador: string;
@@ -24,7 +25,7 @@ export default function IVA() {
   const [filtro, setFiltro] = useState("abierto"); const [msg, setMsg] = useState("");
 
   const cargar = useCallback(async () => {
-    try { const j = await api(`/api/admin/iva?desde=${desde}&hasta=${hasta}`); setRows(j.hallazgos); setInforme(j.informe); }
+    try { const j = await api(`/api/admin/iva?desde=${desde}&hasta=${hasta}`); setRows(arr<H>(j.hallazgos)); setInforme(j.informe ?? null); }
     catch (e) { setMsg((e as Error).message); }
   }, [desde, hasta]);
   useEffect(() => { cargar(); }, [cargar]);
@@ -49,7 +50,7 @@ export default function IVA() {
   };
   const csv = () => {
     const cab = ["fecha", "tipo", "severidad", "estado", "receptor", "pagador", "importe", "iva_estimado", "propuesta", "motivo"];
-    const lineas = rows.map((h) => [h.detected_at, TIPO[h.kind] ?? h.kind, h.severity, h.status, h.receptor, h.pagador, h.amount, h.iva_due ?? "", h.propuesta_accion ?? "", (h.motivo ?? "").replace(/"/g, "'")]
+    const lineas = rows.map((h) => [h.detected_at, TIPO[h.kind] ?? h.kind, h.severity, h.status, h.receptor, h.pagador, h.amount, h.iva_due ?? "", h.propuesta_accion ?? "", (h.motivo ?? "").split('"').join("'")]
       .map((v) => `"${String(v)}"`).join(";"));
     const blob = new Blob([[cab.join(";"), ...lineas].join("\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `iva_hallazgos_${desde}_${hasta}.csv`; a.click();

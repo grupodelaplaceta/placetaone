@@ -11,7 +11,7 @@ export default function Estado() {
   const [h, setH] = useState<H | null>(null); const [err, setErr] = useState(""); const [sel, setSel] = useState<C | null>(null); const [busy, setBusy] = useState(false);
   const load = useCallback(async () => { setBusy(true); try { setH(await api("/api/admin/health")); setErr(""); } catch (e) { setErr((e as Error).message); } setBusy(false); }, []);
   useEffect(() => { load(); }, [load]);
-  const bad = h ? [...h.apis, ...h.config].filter(c => !c.ok).length + [...h.integrity, ...h.security].filter(c => (c.count ?? 0) > 0 && c.severity === "critical").length : 0;
+  const bad = h ? [...(h.apis ?? []), ...(h.config ?? [])].filter(c => !c.ok).length + [...(h.integrity ?? []), ...(h.security ?? [])].filter(c => (c.count ?? 0) > 0 && c.severity === "critical").length : 0;
   const rows = (list: C[], isData: boolean) => list.map((c, i) => <tr key={i} onClick={() => setSel(c)} style={{ cursor: "pointer" }}><td style={{ padding: 6 }}>{dot(isData ? sev(c) : c.ok ? "#2a7" : "#c33")}{c.name ?? c.check}</td>
     <td style={{ color: "#555" }}>{isData ? ((c.count ?? 0) === 0 ? "Correcto" : `${c.count} caso(s)`) : c.detail}</td><td style={{ textAlign: "right", color: "#777" }}>{c.ms !== undefined ? `${c.ms} ms` : ""}</td></tr>);
   return (<><h1>Estado del sistema</h1>{err && <p role="alert" style={{ color: "#a33" }}>{err}</p>}

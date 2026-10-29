@@ -81,7 +81,8 @@ drop trigger if exists t_ledger_ro on plone27_ledger_entries;
 create trigger t_ledger_ro before update or delete on plone27_ledger_entries for each row execute function plone27_immutable();
 drop trigger if exists t_tx_nodel on plone27_transactions;
 create trigger t_tx_nodel before delete on plone27_transactions for each row execute function plone27_immutable();
-create or replace function plone27_rv_guard() returns trigger language plpgsql as $$ begin
+create or replace function plone27_rv_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
   if old.status='published' then raise exception 'Versión publicada inmutable; crea una nueva'; end if;
   if new.status='published' and (new.approver is null or new.approver is not distinct from new.author and false) then raise exception 'Requiere aprobador'; end if;
   return new; end $$;
@@ -89,7 +90,8 @@ drop trigger if exists t_rv_guard on plone27_tax_rule_versions;
 create trigger t_rv_guard before update on plone27_tax_rule_versions for each row execute function plone27_rv_guard();
 
 -- Saldo derivado: créditos − débitos − reservas activas
-create or replace view plone27_account_balances with(security_invoker=true) as
+drop view if exists plone27_account_balances cascade;
+create view plone27_account_balances with(security_invoker=true) as
 select a.id account_id, a.name, a.kind, a.status,
   coalesce(sum(case when e.direction='credit' then e.amount else -e.amount end),0) booked,
   coalesce((select sum(r.amount) from plone27_reservations r where r.account_id=a.id and r.status='active'),0) reserved
@@ -124,7 +126,8 @@ begin
 end $$;
 
 create or replace function plone27_transfer(p_key text,p_from uuid,p_to uuid,p_amount numeric,p_memo text,p_actor uuid) returns uuid
-language plpgsql security definer set search_path=public as $$ begin
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if p_from=p_to or p_amount<=0 then raise exception 'Transferencia inválida'; end if;
   return plone27_post(p_key,'transfer',p_memo,jsonb_build_array(
     jsonb_build_object('account',p_from,'dir','debit','amount',p_amount),
@@ -132,7 +135,8 @@ language plpgsql security definer set search_path=public as $$ begin
 end $$;
 
 create or replace function plone27_reverse(p_key text,p_tx uuid,p_reason text,p_actor uuid) returns uuid
-language plpgsql security definer set search_path=public as $$ declare r uuid; lines jsonb; begin
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare r uuid; lines jsonb; begin
   if exists(select 1 from plone27_transactions where id=p_tx and status='reversed') then raise exception 'Ya revertida'; end if;
   select jsonb_agg(jsonb_build_object('account',account_id,'dir',case direction when 'debit' then 'credit' else 'debit' end,'amount',amount))
     into lines from plone27_ledger_entries where transaction_id=p_tx;
@@ -159,7 +163,8 @@ grant execute on function plone27_post,plone27_transfer,plone27_reverse to servi
 -- BANCOS: ciclo de vida
 alter table plone27_banks add column if not exists description text, add column if not exists status text not null default 'draft' check(status in('draft','review','active','suspended','closed')),
  add column if not exists valid_from date, add column if not exists valid_to date, add column if not exists approved_by uuid, add column if not exists config jsonb not null default '{}';
-create or replace function plone27_bank_guard() returns trigger language plpgsql as $$ begin
+create or replace function plone27_bank_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.status is distinct from old.status then
   if (old.status,new.status) not in(('draft','review'),('review','draft'),('review','active'),('active','suspended'),('suspended','active'),('active','closed'),('suspended','closed'))
    then raise exception 'Transición % → % no permitida',old.status,new.status; end if;
@@ -175,6 +180,7 @@ create table if not exists plone27_fee_rules(id uuid primary key default gen_ran
  beneficiary_account uuid not null references plone27_accounts, valid_from date not null, valid_to date, approved_by uuid);
 create or replace function plone27_transfer_fee(p_key text,p_from uuid,p_to uuid,p_amount numeric,p_memo text,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare b uuid; r plone27_fee_rules; fee numeric:=0; u numeric:=0; lines jsonb; begin
  select bank_id into b from plone27_accounts where id=p_from;
  if b is not null and not exists(select 1 from plone27_banks where id=b and status='active') then raise exception 'Banco no activo para nuevas operaciones'; end if;
@@ -193,7 +199,8 @@ declare b uuid; r plone27_fee_rules; fee numeric:=0; u numeric:=0; lines jsonb; 
 alter table plone27_tax_rules add column if not exists max_rate numeric(9,4), add column if not exists collector_account uuid references plone27_accounts;
 alter table plone27_tax_rule_versions add column if not exists scope_bank uuid references plone27_banks, add column if not exists scope_op text,
  add column if not exists retro_mode text not null default 'prohibited' check(retro_mode in('prohibited','simulation','automatic'));
-create or replace function plone27_rv_cap() returns trigger language plpgsql as $$ declare m numeric; begin
+create or replace function plone27_rv_cap() returns trigger language plpgsql as $$
+#variable_conflict use_column declare m numeric; begin
  select max_rate into m from plone27_tax_rules where id=new.rule_id;
  if (new.scope_bank is not null or new.scope_op is not null) and m is not null and new.method='percent' and new.rate>m then raise exception 'Regla específica supera el límite central (%)',m; end if; return new; end $$;
 drop trigger if exists t_rv_cap on plone27_tax_rule_versions;
@@ -202,7 +209,8 @@ create table if not exists plone27_tax_exemptions(id uuid primary key default ge
  valid_from date not null, valid_to date, reason text not null, legal_basis text not null, approved_by uuid not null);
 create table if not exists plone27_tax_distribution(id uuid primary key default gen_random_uuid(), rule_id uuid not null references plone27_tax_rules, account_id uuid not null references plone27_accounts,
  pct numeric(5,2) not null check(pct>0 and pct<=100), approved_by uuid);
-create or replace function plone27_dist_guard() returns trigger language plpgsql as $$ begin
+create or replace function plone27_dist_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if (select coalesce(sum(pct),0) from plone27_tax_distribution where rule_id=new.rule_id and id<>new.id)+new.pct>100 then raise exception 'La distribución supera el 100%%'; end if; return new; end $$;
 drop trigger if exists t_dist on plone27_tax_distribution;
 create trigger t_dist before insert or update on plone27_tax_distribution for each row execute function plone27_dist_guard();
@@ -214,6 +222,7 @@ alter table plone27_tax_receipts add column if not exists evaluation_id uuid ref
 
 create or replace function plone27_tax_issue(p_code text,p_account uuid,p_base numeric,p_event_key text,p_op text,p_pathway text,p_due date,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare ev uuid; rid uuid; ids uuid[]; v uuid; amt numeric; b uuid; begin
  select id into ev from plone27_tax_evaluations where event_key=p_event_key;
  if ev is not null then return (select id from plone27_tax_receipts where evaluation_id=ev); end if;
@@ -233,6 +242,7 @@ declare ev uuid; rid uuid; ids uuid[]; v uuid; amt numeric; b uuid; begin
  insert into plone27_tax_receipts(rule_version_id,account_id,base,amount,due_date,evaluation_id) values(v,p_account,p_base,amt,p_due,ev) returning id into rid; return rid; end $$;
 
 create or replace function plone27_tax_pay(p_key text,p_receipt uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r record; dl jsonb; ds numeric; lines jsonb; tx uuid; begin
  select t.*,ru.collector_account col,ru.id rule into r from plone27_tax_receipts t join plone27_tax_rule_versions v on v.id=t.rule_version_id join plone27_tax_rules ru on ru.id=v.rule_id where t.id=p_receipt for update of t;
  if r.status='paid' then return r.paid_tx; end if; if r.status<>'issued' then raise exception 'Recibo no cobrable'; end if;
@@ -247,6 +257,7 @@ create table if not exists plone27_tax_adjustments(id uuid primary key default g
  original_amount numeric(18,2), corrected_amount numeric(18,2), diff numeric(18,2), status text default 'simulated' check(status in('simulated','approved','executed')),
  created_by uuid, approved_by uuid, adj_receipt uuid, adj_tx uuid, unique(receipt_id,new_version_id));
 create or replace function plone27_adjust_simulate(p_receipt uuid,p_version uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r plone27_tax_receipts; v plone27_tax_rule_versions; c numeric; aid uuid; begin
  select * into r from plone27_tax_receipts where id=p_receipt; select * into v from plone27_tax_rule_versions where id=p_version and status='published';
  if v.id is null or v.retro_mode='prohibited' then raise exception 'La regla no permite retroactividad'; end if;
@@ -282,16 +293,19 @@ create table if not exists plone27_cards(id uuid primary key default gen_random_
  status text not null default 'active' check(status in('active','blocked','closed')), design_id uuid references plone27_card_designs, credit_limit numeric(18,2));
 create table if not exists plone27_card_charges(id uuid primary key default gen_random_uuid(), card_id uuid not null references plone27_cards, merchant_account uuid not null references plone27_accounts,
  amount numeric(18,2) not null check(amount>0), status text not null default 'authorized' check(status in('authorized','billed','settled','released')), reservation_id uuid references plone27_reservations, at timestamptz default now());
-create or replace function plone27_design_step(p_design uuid,p_to text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare o text; begin
+create or replace function plone27_design_step(p_design uuid,p_to text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare o text; begin
  select status into o from plone27_card_designs where id=p_design for update;
  if (o,p_to) not in(('draft','submitted'),('submitted','review'),('review','approved'),('review','rejected'),('rejected','draft')) then raise exception 'Transición no permitida'; end if;
  update plone27_card_designs set status=p_to where id=p_design; insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'design_step','design',p_design::text,to_jsonb(p_to)); end $$;
 create or replace function plone27_design_buy(p_key text,p_design uuid,p_account uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare d plone27_card_designs; tx uuid; t numeric; begin
  select * into d from plone27_card_designs where id=p_design; if d.status<>'approved' then raise exception 'Diseño no aprobado'; end if;
  t:=d.price+d.license_fee; if t>0 then tx:=plone27_transfer(p_key,p_account,d.revenue_account,t,'Diseño '||d.name,p_actor); end if;
  insert into plone27_design_purchases values(p_design,p_account,tx) on conflict do nothing; return tx; end $$;
 create or replace function plone27_card_authorize(p_card uuid,p_amount numeric,p_merchant uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare c plone27_cards; res uuid; ch uuid; begin
  select * into c from plone27_cards where id=p_card for update; if c.status<>'active' then raise exception 'Tarjeta no activa'; end if;
  if c.kind='credit' then
@@ -300,6 +314,7 @@ declare c plone27_cards; res uuid; ch uuid; begin
   insert into plone27_reservations(account_id,amount,reason) values(c.account_id,p_amount,'card auth') returning id into res; end if;
  insert into plone27_card_charges(card_id,merchant_account,amount,reservation_id) values(p_card,p_merchant,p_amount,res) returning id into ch; return ch; end $$;
 create or replace function plone27_card_settle(p_key text,p_charge uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare ch plone27_card_charges; c plone27_cards; tx uuid; begin
  select * into ch from plone27_card_charges where id=p_charge for update; if ch.status<>'authorized' then raise exception 'Cargo ya procesado'; end if;
  select * into c from plone27_cards where id=ch.card_id;
@@ -307,6 +322,7 @@ declare ch plone27_card_charges; c plone27_cards; tx uuid; begin
  update plone27_reservations set status='released' where id=ch.reservation_id;
  tx:=plone27_transfer(p_key,c.account_id,ch.merchant_account,ch.amount,'Tarjeta',p_actor); update plone27_card_charges set status='settled' where id=p_charge; return tx; end $$;
 create or replace function plone27_card_close_cycle(p_key text,p_card uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare c plone27_cards; lines jsonb; tot numeric; begin
  select * into c from plone27_cards where id=p_card for update;
  select sum(amount) into tot from plone27_card_charges where card_id=p_card and status='billed'; if coalesce(tot,0)=0 then return null; end if;
@@ -318,7 +334,8 @@ declare c plone27_cards; lines jsonb; tot numeric; begin
 -- PROGRAMADAS
 create table if not exists plone27_scheduled(id uuid primary key default gen_random_uuid(), from_account uuid references plone27_accounts, to_account uuid references plone27_accounts,
  amount numeric(18,2) not null check(amount>0), run_at timestamptz not null, recurrence interval, status text default 'active' check(status in('active','done','cancelled')), memo text);
-create or replace function plone27_run_scheduled(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$ declare s record; n int:=0; begin
+create or replace function plone27_run_scheduled(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare s record; n int:=0; begin
  for s in select * from plone27_scheduled where status='active' and run_at<=now() order by run_at for update skip locked loop
   begin perform plone27_transfer_fee('sch:'||s.id||':'||s.run_at,s.from_account,s.to_account,s.amount,s.memo,p_actor); n:=n+1;
    if s.recurrence is null then update plone27_scheduled set status='done' where id=s.id; else update plone27_scheduled set run_at=run_at+recurrence where id=s.id; end if;
@@ -327,8 +344,9 @@ create or replace function plone27_run_scheduled(p_actor uuid) returns int langu
 
 -- SUBVENCIONES Y BONOS
 alter table plone27_grant_programs add column if not exists funding_account uuid references plone27_accounts;
-alter table plone27_justifications drop constraint plone27_justifications_status_check, add check(status in('pending','approved','paid','rejected'));
+alter table plone27_justifications drop constraint plone27_justifications_status_check, add check(status in('pending','approved','paid','rejected')) not valid;
 create or replace function plone27_justify(p_grant uuid,p_tx uuid,p_invoice text,p_amount numeric,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare g plone27_grants; spent numeric; jid uuid; begin
  select * into g from plone27_grants where id=p_grant for update;
  select sum(e.amount) into spent from plone27_ledger_entries e join plone27_transactions t on t.id=e.transaction_id where e.transaction_id=p_tx and e.account_id=g.beneficiary_account and e.direction='debit' and t.status='posted';
@@ -336,6 +354,7 @@ declare g plone27_grants; spent numeric; jid uuid; begin
  if coalesce((select sum(amount) from plone27_justifications where grant_id=p_grant and status<>'rejected'),0)+p_amount>g.granted then raise exception 'Supera lo concedido'; end if;
  insert into plone27_justifications(grant_id,transaction_id,invoice_ref,amount) values(p_grant,p_tx,p_invoice,p_amount) returning plone27_justifications.id into jid; return jid; end $$;  -- unique(transaction_id/invoice) impide justificar dos veces
 create or replace function plone27_reimburse(p_key text,p_just uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare j plone27_justifications; g plone27_grants; f uuid; tx uuid; begin
  select * into j from plone27_justifications where id=p_just for update; if j.status not in('pending','approved') then raise exception 'Ya pagada o rechazada'; end if;
  select * into g from plone27_grants where id=j.grant_id for update; select funding_account into f from plone27_grant_programs where id=g.program_id;
@@ -371,10 +390,12 @@ insert into plone27_numbering_formats(kind,version,prefix,year_scoped,width,stat
 ('DEU',1,'PL27-DEU-',true,6,'published','inicial'),('INC',1,'PL27-INC-',true,6,'published','inicial')
 on conflict do nothing;
 
-create or replace function plone27_next_num(p_kind text,p_scope text,p_max bigint) returns bigint language plpgsql security definer set search_path=public as $$ declare n bigint; begin
+create or replace function plone27_next_num(p_kind text,p_scope text,p_max bigint) returns bigint language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare n bigint; begin
  insert into plone27_counters values(p_kind,p_scope,1) on conflict(kind,scope) do update set last=plone27_counters.last+1 returning last into n;
  if n>p_max then raise exception 'Capacidad agotada (% / %)',p_kind,p_scope; end if; return n; end $$;
-create or replace function plone27_next_id(p_kind text) returns text language plpgsql security definer set search_path=public as $$ declare f plone27_numbering_formats; sc text; n bigint; id text; begin
+create or replace function plone27_next_id(p_kind text) returns text language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare f plone27_numbering_formats; sc text; n bigint; id text; begin
  select * into f from plone27_numbering_formats where kind=p_kind and status='published' and valid_from<=current_date order by version desc limit 1;
  if not found then raise exception 'Formato % sin publicar',p_kind; end if;
  sc:=case when f.year_scoped then extract(year from current_date)::text else 'global' end;
@@ -383,23 +404,28 @@ create or replace function plone27_next_id(p_kind text) returns text language pl
  insert into plone27_issued_ids(identifier,kind) values(id,p_kind); return id; end $$;
 
 -- Configuración versionada: propuesta → simulación → publicación aprobada (no altera identificadores históricos)
-create or replace function plone27_numbering_propose(p_kind text,p_prefix text,p_year boolean,p_width int,p_reason text,p_actor uuid) returns int language plpgsql security definer set search_path=public as $$ declare v int; begin
+create or replace function plone27_numbering_propose(p_kind text,p_prefix text,p_year boolean,p_width int,p_reason text,p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare v int; begin
  select coalesce(max(version),0)+1 into v from plone27_numbering_formats where kind=p_kind;
  insert into plone27_numbering_formats(kind,version,prefix,year_scoped,width,reason,author) values(p_kind,v,p_prefix,p_year,p_width,p_reason,p_actor); return v; end $$;
-create or replace function plone27_numbering_simulate(p_kind text,p_version int,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$ declare f plone27_numbering_formats; s text; begin
+create or replace function plone27_numbering_simulate(p_kind text,p_version int,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare f plone27_numbering_formats; s text; begin
  select * into f from plone27_numbering_formats where kind=p_kind and version=p_version;
  s:=f.prefix||case when f.year_scoped then extract(year from current_date)||'-' else '' end||lpad('1',f.width,'0');
  return jsonb_build_object('sample',s,'collides',exists(select 1 from plone27_issued_ids where identifier=s),'capacity',power(10,f.width)-1); end $$;
-create or replace function plone27_numbering_publish(p_kind text,p_version int,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_numbering_publish(p_kind text,p_version int,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
  if plone27_numbering_simulate(p_kind,p_version,p_actor)->>'collides'='true' then raise exception 'Colisión de formato'; end if;
  update plone27_numbering_formats set status='published',approved_by=p_actor,valid_from=current_date where kind=p_kind and version=p_version and status='draft';
  insert into plone27_audit_log(actor,action,entity,entity_id) values(p_actor,'numbering_publish',p_kind,p_version::text); end $$;
 
 -- Referencias automáticas e inmutables en documentos
-create or replace function plone27_set_ref() returns trigger language plpgsql security definer set search_path=public as $$ declare k text:=tg_argv[0]; begin
+create or replace function plone27_set_ref() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare k text:=tg_argv[0]; begin
  if tg_table_name='plone27_grants' then select case p.kind when 'bono' then 'BON' else 'SUB' end into k from plone27_grant_programs p where p.id=new.program_id; end if;
  if new.ref is null then new.ref:=plone27_next_id(k); end if; return new; end $$;
-create or replace function plone27_ref_lock() returns trigger language plpgsql as $$ begin
+create or replace function plone27_ref_lock() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.ref is distinct from old.ref then raise exception 'Referencia inmutable'; end if; return new; end $$;
 do $$ declare x text[]; begin
  foreach x slice 1 in array array[['plone27_tax_receipts','REC'],['plone27_tax_adjustments','REG'],['plone27_grants','SUB'],['plone27_justifications','JUS'],['plone27_incidents','INC'],['plone27_debts','DEU'],['plone27_approvals','AUT']] loop
@@ -407,14 +433,16 @@ do $$ declare x text[]; begin
   execute format('drop trigger if exists t_ref on %I',x[1]); execute format('create trigger t_ref before insert on %I for each row execute function plone27_set_ref(%L)',x[1],x[2]);
   execute format('drop trigger if exists t_ref_lock on %I',x[1]); execute format('create trigger t_ref_lock before update on %I for each row execute function plone27_ref_lock()',x[1]); end loop; end $$;
 alter table plone27_transactions add column if not exists ref text unique, add column if not exists transfer_ref text unique;
-create or replace function plone27_tx_refs() returns trigger language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_tx_refs() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
  new.ref:=plone27_next_id('OPE'); if new.kind='transfer' then new.transfer_ref:=plone27_next_id('TRF'); end if; return new; end $$;
 drop trigger if exists t_tx_refs on plone27_transactions;
 create trigger t_tx_refs before insert on plone27_transactions for each row execute function plone27_tx_refs();
 drop trigger if exists t_tx_ref_lock on plone27_transactions;
 create trigger t_tx_ref_lock before update on plone27_transactions for each row execute function plone27_ref_lock();
 alter table plone27_justifications add column if not exists reimb_ref text unique;
-create or replace function plone27_reimb_ref() returns trigger language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_reimb_ref() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
  if new.status='paid' and new.reimb_ref is null then new.reimb_ref:=plone27_next_id('REE'); end if; return new; end $$;
 drop trigger if exists t_reimb on plone27_justifications;
 create trigger t_reimb before update on plone27_justifications for each row execute function plone27_reimb_ref();
@@ -424,15 +452,18 @@ do $$ begin alter table plone27_banks add constraint banks_code4 check(code ~ '^
 insert into plone27_banks(code,name,status) values('0000','Placeta Administración','active')
 on conflict do nothing;   -- entidad reservada (cuentas de sistema)
 alter table plone27_accounts add column if not exists iban text unique;
-create or replace function plone27_iban_guard() returns trigger language plpgsql as $$ begin
+create or replace function plone27_iban_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if tg_op='INSERT' then
   if new.iban is null or new.iban !~ '^PZ-[0-9]{4}-[0-9]{4}$' or substr(new.iban,4,4) is distinct from (select code from plone27_banks where id=new.bank_id) then raise exception 'IBAN solo generado por servidor'; end if;
  elsif new.iban is distinct from old.iban or new.bank_id is distinct from old.bank_id then raise exception 'IBAN inmutable'; end if; return new; end $$;
 drop trigger if exists t_iban on plone27_accounts;
 create trigger t_iban before insert or update on plone27_accounts for each row execute function plone27_iban_guard();
-create or replace function plone27_open_bank(p_name text,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$ declare c text; id uuid; begin
+create or replace function plone27_open_bank(p_name text,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare c text; id uuid; begin
  c:=lpad(plone27_next_num('BANK','global',9999)::text,4,'0'); insert into plone27_banks(code,name) values(c,p_name) returning plone27_banks.id into id; return jsonb_build_object('id',id,'code',c); end $$;
 create or replace function plone27_open_account(p_bank uuid,p_kind text,p_name text,p_owner uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare vc text; i text; id uuid; begin
  select b.code into vc from plone27_banks b where b.id=p_bank and b.status='active'; if vc is null then raise exception 'Entidad inexistente o no activa'; end if;
  i:='PZ-'||vc||'-'||lpad(plone27_next_num('ACC',vc,9999)::text,4,'0');
@@ -440,9 +471,10 @@ declare vc text; i text; id uuid; begin
  insert into plone27_audit_log(actor,action,entity,entity_id) values(p_actor,'open_account','account',i); return jsonb_build_object('id',id,'iban',i); end $$;
 
 -- Tarjetas: id administrativo PL27-TAR; número visible solo en pruebas; sin PAN/CVV almacenados
-alter table plone27_cards drop constraint plone27_cards_status_check, add check(status in('active','suspended','blocked','closed')),
+alter table plone27_cards drop constraint plone27_cards_status_check, add check(status in('active','suspended','blocked','closed')) not valid,
  add column if not exists card_ref text unique, add column if not exists is_test boolean not null default false, add column if not exists expires date, add column if not exists last4 text, add column if not exists pan_hash text unique;
 create or replace function plone27_issue_card(p_account uuid,p_kind text,p_design uuid,p_limit numeric,p_test boolean,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r text; num text; cid uuid; begin
  if not exists(select 1 from plone27_accounts where id=p_account and status='active') then raise exception 'Cuenta no activa'; end if;
  if p_design is not null and not exists(select 1 from plone27_design_purchases where design_id=p_design and account_id=p_account) then raise exception 'Diseño no adquirido'; end if;
@@ -451,10 +483,12 @@ declare r text; num text; cid uuid; begin
  insert into plone27_cards(account_id,kind,design_id,credit_limit,card_ref,is_test,expires,last4,pan_hash)
   values(p_account,p_kind,p_design,p_limit,r,p_test,current_date+interval '5 years',right(num,4),encode(sha256(convert_to(coalesce(num,r),'utf8')),'hex')) returning plone27_cards.id into cid;
  return jsonb_build_object('id',cid,'card_ref',r,'test_number',regexp_replace(num,'(\d{4})(?=\d)','\1 ','g')); end $$;  -- el número de prueba se devuelve una sola vez
-create or replace function plone27_card_set_status(p_card uuid,p_to text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare o text; begin
+create or replace function plone27_card_set_status(p_card uuid,p_to text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare o text; begin
  select status into o from plone27_cards where id=p_card for update; if o='closed' then raise exception 'Tarjeta cancelada'; end if;
  update plone27_cards set status=p_to where id=p_card; insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'card_status','card',p_card::text,to_jsonb(p_to)); end $$;
-create or replace function plone27_card_renew(p_card uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$ declare c plone27_cards; begin
+create or replace function plone27_card_renew(p_card uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare c plone27_cards; begin
  select * into c from plone27_cards where id=p_card; perform plone27_card_set_status(p_card,'closed',p_actor);
  return plone27_issue_card(c.account_id,c.kind,c.design_id,c.credit_limit,c.is_test,p_actor); end $$;
 
@@ -478,6 +512,7 @@ do $$ declare t text; f text; begin
 create table if not exists plone27_account_members(account_id uuid references plone27_accounts, user_id uuid, role text not null check(role in('holder','coholder','authorized')), primary key(account_id,user_id));
 create table if not exists plone27_juniors(account_id uuid primary key references plone27_accounts, birth_date date not null, guardian_user uuid not null, per_tx_limit numeric(18,2) not null);
 create or replace function plone27_ledger_limits() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a plone27_accounts; k text; j plone27_juniors; used numeric; begin
  if new.direction<>'debit' then return new; end if;
  select kind into k from plone27_transactions where id=new.transaction_id; if k in('reversal','tax_refund') then return new; end if;
@@ -491,7 +526,8 @@ declare a plone27_accounts; k text; j plone27_juniors; used numeric; begin
  return new; end $$;
 drop trigger if exists t_limits on plone27_ledger_entries;
 create trigger t_limits before insert on plone27_ledger_entries for each row execute function plone27_ledger_limits();
-create or replace function plone27_staff_set(p_user uuid,p_role text,p_active boolean,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_staff_set(p_user uuid,p_role text,p_active boolean,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
  insert into plone27_staff(user_id,role,active) values(p_user,p_role,p_active) on conflict(user_id) do update set role=p_role,active=p_active;
  insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'staff_set','staff',p_user::text,jsonb_build_object('role',p_role,'active',p_active)); end $$;
 
@@ -500,6 +536,7 @@ create table if not exists plone27_batches(id uuid primary key default gen_rando
 create table if not exists plone27_batch_items(id uuid primary key default gen_random_uuid(), batch_id uuid not null references plone27_batches, to_account uuid not null references plone27_accounts,
  amount numeric(18,2) not null check(amount>0), status text not null default 'pending' check(status in('pending','paid','failed')), error text);
 create or replace function plone27_run_batch(p_batch uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare b plone27_batches; i record; ok int:=0; ko int:=0; begin
  select * into b from plone27_batches where id=p_batch for update;
  for i in select * from plone27_batch_items where batch_id=p_batch and status in('pending','failed') order by id loop
@@ -515,7 +552,8 @@ drop trigger if exists t_ref on plone27_invoices;
 create trigger t_ref before insert on plone27_invoices for each row execute function plone27_set_ref('FAC');
 drop trigger if exists t_ref on plone27_settlements;
 create trigger t_ref before insert on plone27_settlements for each row execute function plone27_set_ref('LIQ');
-create or replace function plone27_settle_bank(p_bank uuid,p_from date,p_to date,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$ declare sid uuid; begin
+create or replace function plone27_settle_bank(p_bank uuid,p_from date,p_to date,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare sid uuid; begin
  select id into sid from plone27_settlements where bank_id=p_bank and period_from=p_from and period_to=p_to; if sid is not null then return sid; end if;
  insert into plone27_settlements(bank_id,period_from,period_to,evaluated,collected,pending,refunded)
   select p_bank,p_from,p_to,coalesce(sum(r.amount),0),coalesce(sum(r.amount) filter(where r.status='paid'),0),coalesce(sum(r.amount) filter(where r.status='issued'),0),coalesce(sum(r.refunded),0)
@@ -523,14 +561,16 @@ create or replace function plone27_settle_bank(p_bank uuid,p_from date,p_to date
 
 -- Deuda con origen autorizado
 alter table plone27_debts add column if not exists creditor_account uuid references plone27_accounts;
-create or replace function plone27_debt_pay(p_key text,p_debt uuid,p_amount numeric,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$ declare d plone27_debts; tx uuid; begin
+create or replace function plone27_debt_pay(p_key text,p_debt uuid,p_amount numeric,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare d plone27_debts; tx uuid; begin
  select * into d from plone27_debts where id=p_debt for update; if d.disputed then raise exception 'Deuda en disputa: no se cobra'; end if;
  if d.paid+p_amount>d.principal+d.authorized_charges then raise exception 'Excede la deuda'; end if;
  tx:=plone27_transfer(p_key,d.account_id,d.creditor_account,p_amount,'Deuda '||d.ref,p_actor); update plone27_debts set paid=paid+p_amount where id=p_debt; return tx; end $$;
 
 -- Tarjetas físicas: pedido → producción → envío → activación (suspendida hasta activar)
 create table if not exists plone27_card_orders(id uuid primary key default gen_random_uuid(), card_id uuid not null unique references plone27_cards, status text not null default 'ordered' check(status in('ordered','produced','shipped','activated','cancelled')), updated_at timestamptz default now());
-create or replace function plone27_card_order_step(p_card uuid,p_to text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare o text; begin
+create or replace function plone27_card_order_step(p_card uuid,p_to text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare o text; begin
  if p_to='ordered' then insert into plone27_card_orders(card_id) values(p_card); update plone27_cards set status='suspended' where id=p_card; return; end if;
  select status into o from plone27_card_orders where card_id=p_card for update;
  if (o,p_to) not in(('ordered','produced'),('produced','shipped'),('shipped','activated'),('ordered','cancelled'),('produced','cancelled')) then raise exception 'Transición de pedido no permitida'; end if;
@@ -558,7 +598,8 @@ create or replace function plone27_bank_visible(p_bank uuid) returns boolean lan
 $$ select exists(select 1 from plone27_staff s where s.user_id=auth.uid() and s.active and (s.bank_id is null or s.bank_id=p_bank)) $$;
 drop policy staff_read on plone27_accounts;
 create policy staff_read on plone27_accounts for select using (plone27_has_role(array['auditor','financiero','fiscal','financiacion','gestor_bancario','aprobador']) and plone27_bank_visible(bank_id));
-create or replace view plone27_account_balances with(security_invoker=true) as
+drop view if exists plone27_account_balances cascade;
+create view plone27_account_balances with(security_invoker=true) as
 select a.id account_id, a.name, a.kind, a.status,
   coalesce(sum(case when e.direction='credit' then e.amount else -e.amount end),0) booked,
   coalesce((select sum(r.amount) from plone27_reservations r where r.account_id=a.id and r.status='active'),0) reserved, a.bank_id
@@ -580,15 +621,16 @@ create or replace function plone27_approval_decide(p_id uuid,p_approve boolean,p
  update plone27_approvals set approved_by=p_actor,result=case when p_approve then 'approved' else 'rejected' end where id=p_id and result is null; end $$;
 
 -- Tramos fiscales y pagos parciales
-alter table plone27_tax_rule_versions drop constraint plone27_tax_rule_versions_method_check, add check(method in('percent','fixed','brackets'));
+alter table plone27_tax_rule_versions drop constraint plone27_tax_rule_versions_method_check, add check(method in('percent','fixed','brackets')) not valid;
 create table if not exists plone27_tax_brackets(version_id uuid not null references plone27_tax_rule_versions, from_amount numeric(18,2) not null, to_amount numeric(18,2), rate numeric(9,4) not null, primary key(version_id,from_amount));
 create or replace function plone27_tax_calc(p_version uuid,p_base numeric) returns numeric language sql stable as $$
  select round(least(coalesce(v.max_amount,'infinity'),greatest(coalesce(v.min_amount,0),
   case v.method when 'percent' then p_base*v.rate/100 when 'fixed' then v.rate
    else coalesce((select sum((least(p_base,coalesce(b.to_amount,'infinity'))-b.from_amount)*b.rate/100) from plone27_tax_brackets b where b.version_id=v.id and p_base>b.from_amount),0) end)),2)
  from plone27_tax_rule_versions v where v.id=p_version $$;
-alter table plone27_tax_receipts drop constraint plone27_tax_receipts_status_check, add check(status in('issued','partial','paid','rectified')), add column if not exists paid_amount numeric(18,2) not null default 0;
+alter table plone27_tax_receipts drop constraint plone27_tax_receipts_status_check, add check(status in('issued','partial','paid','rectified')) not valid, add column if not exists paid_amount numeric(18,2) not null default 0;
 create or replace function plone27_tax_pay_partial(p_key text,p_receipt uuid,p_amount numeric,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r record; dl jsonb; ds numeric; lines jsonb; tx uuid; done boolean; begin
  select t.*,ru.collector_account col,ru.id rule into r from plone27_tax_receipts t join plone27_tax_rule_versions v on v.id=t.rule_version_id join plone27_tax_rules ru on ru.id=v.rule_id where t.id=p_receipt for update of t;
  if r.status not in('issued','partial') then raise exception 'Recibo no cobrable'; end if;
@@ -602,14 +644,16 @@ declare r record; dl jsonb; ds numeric; lines jsonb; tx uuid; done boolean; begi
 -- Webhooks (outbox por entidad, firma HMAC) y alertas
 create table if not exists plone27_webhooks(id uuid primary key default gen_random_uuid(), bank_id uuid not null references plone27_banks, url text not null check(url ~ '^https://'), secret text not null, events text[] not null default '{*}', active boolean not null default true);
 create table if not exists plone27_outbox(id bigint generated always as identity primary key, event text not null, bank_ids uuid[] not null default '{}', payload jsonb, status text not null default 'pending' check(status in('pending','sent','failed')), attempts int not null default 0, created_at timestamptz default now());
-create or replace function plone27_emit() returns trigger language plpgsql security definer set search_path=public as $$ declare b uuid[]; p jsonb; begin
+create or replace function plone27_emit() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare b uuid[]; p jsonb; begin
  if new.action='post' then
   select array_agg(distinct a.bank_id) into b from plone27_accounts a where a.id in(select (x->>'account')::uuid from jsonb_array_elements(new.detail) x);
   select jsonb_build_object('operation',t.ref,'transfer',t.transfer_ref,'kind',t.kind) into p from plone27_transactions t where t.id=new.entity_id::uuid;
   insert into plone27_outbox(event,bank_ids,payload) values('transaction.posted',coalesce(b,'{}'),p); end if; return new; end $$;
 drop trigger if exists t_emit on plone27_audit_log;
 create trigger t_emit after insert on plone27_audit_log for each row execute function plone27_emit();
-create or replace view plone27_alerts with(security_invoker=true) as
+drop view if exists plone27_alerts cascade;
+create view plone27_alerts with(security_invoker=true) as
  select 'incidencias_abiertas' alerta,count(*) n from plone27_incidents where status='open'
  union all select 'evaluaciones_en_revision',count(*) from plone27_tax_evaluations where status='review'
  union all select 'aprobaciones_pendientes',count(*) from plone27_approvals where result is null
@@ -643,39 +687,46 @@ insert into plone27_settings(key,category,description,vtype,allowed,min_v,max_v,
 ('webhook_max_attempts','integraciones','Reintentos de webhook antes de marcar fallo','number',null,1,20,'5',false,false),
 ('api_default_rate_limit','integraciones','Peticiones por minuto de un cliente API nuevo','number',null,1,10000,'60',false,true)
 on conflict do nothing;
-create or replace function plone27_setting(p_key text,p_bank uuid default null) returns jsonb language plpgsql stable security definer set search_path=public as $$ declare v jsonb; begin
+create or replace function plone27_setting(p_key text,p_bank uuid default null) returns jsonb language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column declare v jsonb; begin
  select coalesce((select b.value from plone27_bank_settings b where b.bank_id=p_bank and b.key=p_key),s.value) into v from plone27_settings s where s.key=p_key;
  if v is null then raise exception 'Ajuste desconocido: %',p_key; end if; return v; end $$;
-create or replace function plone27_setting_validate(p_key text,p_value jsonb) returns void language plpgsql stable as $$ declare s plone27_settings; begin
+create or replace function plone27_setting_validate(p_key text,p_value jsonb) returns void language plpgsql stable as $$
+#variable_conflict use_column declare s plone27_settings; begin
  select * into s from plone27_settings where key=p_key; if s.key is null then raise exception 'Ajuste desconocido'; end if;
  if s.vtype='number' then if jsonb_typeof(p_value)<>'number' or (p_value#>>'{}')::numeric<coalesce(s.min_v,-1e18) or (p_value#>>'{}')::numeric>coalesce(s.max_v,1e18) then raise exception 'Fuera de los límites centrales [% , %]',s.min_v,s.max_v; end if;
  elsif s.vtype='boolean' then if jsonb_typeof(p_value)<>'boolean' then raise exception 'Se esperaba booleano'; end if;
  elsif s.vtype='enum' then if not (p_value#>>'{}')=any(s.allowed) then raise exception 'Valor no permitido (%)',s.allowed; end if;
  elsif jsonb_typeof(p_value)<>'string' then raise exception 'Se esperaba texto'; end if; end $$;
-create or replace function plone27_setting_apply(p_change uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare c plone27_setting_changes; begin
+create or replace function plone27_setting_apply(p_change uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare c plone27_setting_changes; begin
  select * into c from plone27_setting_changes where id=p_change and status='pending' for update; if c.id is null then return; end if;
  if c.bank_id is null then update plone27_settings set value=c.new_value,version=version+1,updated_at=now() where key=c.key;
  else insert into plone27_bank_settings values(c.bank_id,c.key,c.new_value) on conflict(bank_id,key) do update set value=c.new_value; end if;
  update plone27_setting_changes set status='applied',approved_by=coalesce(approved_by,p_actor) where id=p_change;
  insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'setting_applied','setting',c.key,jsonb_build_object('bank',c.bank_id,'new',c.new_value)); end $$;
 create or replace function plone27_setting_propose(p_key text,p_value jsonb,p_bank uuid,p_reason text,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare s plone27_settings; id uuid; begin
  select * into s from plone27_settings where key=p_key; perform plone27_setting_validate(p_key,p_value);
  if p_bank is not null and not s.bank_overridable then raise exception 'Este ajuste solo es central'; end if; if coalesce(p_reason,'')='' then raise exception 'Motivo obligatorio'; end if;
  insert into plone27_setting_changes(key,bank_id,new_value,old_value,reason,proposed_by) values(p_key,p_bank,p_value,plone27_setting(p_key,p_bank),p_reason,p_actor) returning plone27_setting_changes.id into id;
  if not s.sensitive then perform plone27_setting_apply(id,p_actor); end if; return id; end $$;
-create or replace function plone27_setting_approve(p_change uuid,p_approve boolean,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare c plone27_setting_changes; begin
+create or replace function plone27_setting_approve(p_change uuid,p_approve boolean,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare c plone27_setting_changes; begin
  select * into c from plone27_setting_changes where id=p_change and status='pending'; if c.id is null then raise exception 'Cambio no pendiente'; end if;
  if c.proposed_by is not distinct from p_actor then raise exception 'El proponente no puede aprobar su propio cambio'; end if;
  if p_approve then update plone27_setting_changes set approved_by=p_actor where id=p_change; perform plone27_setting_apply(p_change,p_actor);
  else update plone27_setting_changes set status='rejected',approved_by=p_actor where id=p_change; end if; end $$;
 
 -- Lo que antes estaba fijado en el código ahora lee la configuración
-create or replace function plone27_adjust_approve(p_adj uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare a plone27_tax_adjustments; begin
+create or replace function plone27_adjust_approve(p_adj uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare a plone27_tax_adjustments; begin
  select * into a from plone27_tax_adjustments where id=p_adj for update;
  if a.created_by is not distinct from p_actor and abs(a.diff)>=(plone27_setting('dual_approval_threshold')#>>'{}')::numeric then raise exception 'Doble aprobación: debe aprobar otra persona'; end if;
  update plone27_tax_adjustments set status='approved',approved_by=p_actor where id=p_adj and status='simulated'; end $$;
 create or replace function plone27_ledger_limits() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a plone27_accounts; k text; j plone27_juniors; used numeric; dl numeric; jl numeric; begin
  if new.direction<>'debit' then return new; end if;
  select kind into k from plone27_transactions where id=new.transaction_id; if k in('reversal','tax_refund') then return new; end if;
@@ -688,6 +739,7 @@ declare a plone27_accounts; k text; j plone27_juniors; used numeric; dl numeric;
   if new.amount>jl then raise exception 'Junior: supera el límite por operación; requiere tutor'; end if; end if; return new; end $$;
 alter table plone27_tax_receipts add column if not exists disputed boolean not null default false;
 create or replace function plone27_adjust_execute(p_adj uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a plone27_tax_adjustments; r plone27_tax_receipts; mode text; col uuid; rid uuid; tx uuid; pol text; bk uuid; begin
  select * into a from plone27_tax_adjustments where id=p_adj for update; if a.status='executed' then return coalesce(a.adj_tx,a.adj_receipt); end if;
  select retro_mode into mode from plone27_tax_rule_versions where id=a.new_version_id;
@@ -714,6 +766,7 @@ declare a plone27_tax_adjustments; r plone27_tax_receipts; mode text; col uuid; 
   update plone27_tax_receipts set refunded=refunded-a.diff where id=r.id; update plone27_tax_adjustments set status='executed',adj_tx=tx where id=p_adj; return tx; end if;
  update plone27_tax_adjustments set status='executed' where id=p_adj; return null; end $$;
 create or replace function plone27_apply_late_penalties(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare code text; n int:=0; r record; x uuid; begin
  if not (plone27_setting('late_penalty_enabled'))::boolean then return 0; end if;
  code:=plone27_setting('late_penalty_rule_code')#>>'{}'; if code='' then raise exception 'Recargo activado sin norma autorizada'; end if;
@@ -737,20 +790,23 @@ create table if not exists plone27_products(id uuid primary key default gen_rand
  interest_rate numeric(9,4) not null default 0, min_age int, requires_guardian boolean not null default false, valid_from date, valid_to date,
  terms jsonb not null default '{}', approved_by uuid, created_by uuid, created_at timestamptz default now());
 alter table plone27_accounts add column if not exists product_id uuid references plone27_products;
-create or replace function plone27_product_guard() returns trigger language plpgsql as $$ begin
+create or replace function plone27_product_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.status is distinct from old.status then
   if (old.status,new.status) not in(('draft','active'),('active','retired'),('draft','retired')) then raise exception 'Transición de producto % → % no permitida',old.status,new.status; end if;
   if new.status='active' and new.approved_by is null then raise exception 'Activar un producto requiere aprobación registrada'; end if; end if; return new; end $$;
 drop trigger if exists t_product_guard on plone27_products;
 create trigger t_product_guard before update on plone27_products for each row execute function plone27_product_guard();
 create or replace function plone27_open_account_p(p_product uuid,p_name text,p_owner uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare p plone27_products; k text; r jsonb; begin
  select * into p from plone27_products where id=p_product and status='active' and (valid_from is null or valid_from<=current_date) and (valid_to is null or valid_to>=current_date);
  if p.id is null then raise exception 'Producto no disponible'; end if; if p.kind not like 'account\_%' then raise exception 'No es un producto de cuenta'; end if;
  k:=case p.kind when 'account_personal' then 'personal' when 'account_business' then 'business' when 'account_shared' then 'shared' else 'junior' end;
  r:=plone27_open_account(p.bank_id,k,p_name,p_owner,p_actor);
  update plone27_accounts set product_id=p_product,daily_limit=coalesce(p.daily_limit,daily_limit) where id=(r->>'id')::uuid; return r; end $$;
-create or replace function plone27_charge_product_fees(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$ declare n int:=0; a record; begin
+create or replace function plone27_charge_product_fees(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare n int:=0; a record; begin
  for a in select ac.id,p.monthly_fee fee,p.fee_account from plone27_accounts ac join plone27_products p on p.id=ac.product_id where ac.status='active' and p.monthly_fee>0 and p.fee_account is not null loop
   begin perform plone27_transfer('pfee:'||a.id||':'||to_char(now(),'YYYY-MM'),a.id,a.fee_account,a.fee,'Cuota de producto',p_actor); n:=n+1;
   exception when others then insert into plone27_incidents(kind,detail) values('product_fee_failed',jsonb_build_object('account',a.id,'err',sqlerrm)); end; end loop; return n; end $$;
@@ -767,6 +823,7 @@ do $$ declare t text; f text; begin
 alter table plone27_transactions add column if not exists req_hash text;
 create or replace function plone27_post(p_key text,p_kind text,p_memo text,p_lines jsonb,p_actor uuid,p_reverses uuid default null)
 returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare tx uuid; d numeric; c numeric; net numeric; acc record; h text; old text; begin
  h:=md5(p_kind||p_lines::text);
  select id,req_hash into tx,old from plone27_transactions where idempotency_key=p_key;
@@ -786,13 +843,15 @@ declare tx uuid; d numeric; c numeric; net numeric; acc record; h text; old text
 
 -- Titularidad: el usuario final debe ser titular/cotitular/autorizado (o tutor en Junior)
 create or replace function plone27_transfer_user(p_key text,p_user uuid,p_from uuid,p_to uuid,p_amount numeric,p_memo text,p_actor uuid) returns uuid
-language plpgsql security definer set search_path=public as $$ begin
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
  if not exists(select 1 from plone27_account_members where account_id=p_from and user_id=p_user) and not exists(select 1 from plone27_juniors where account_id=p_from and guardian_user=p_user)
   then raise exception 'El usuario no está autorizado en la cuenta de origen'; end if;
  return plone27_transfer_fee(p_key,p_from,p_to,p_amount,p_memo,p_actor); end $$;
 
 -- Reservas manuales (programadas, retenciones)
-create or replace function plone27_reserve(p_account uuid,p_amount numeric,p_reason text,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$ declare rid uuid; begin
+create or replace function plone27_reserve(p_account uuid,p_amount numeric,p_reason text,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare rid uuid; begin
  perform 1 from plone27_accounts where id=p_account for update;
  if p_amount<=0 or plone27_available(p_account)<p_amount then raise exception 'Saldo disponible insuficiente'; end if;
  insert into plone27_reservations(account_id,amount,reason) values(p_account,p_amount,p_reason) returning plone27_reservations.id into rid; return rid; end $$;
@@ -811,6 +870,7 @@ declare a plone27_accounts; k text; bal numeric; begin
 drop trigger if exists t_credit_floor on plone27_ledger_entries;
 create trigger t_credit_floor before insert on plone27_ledger_entries for each row execute function plone27_credit_floor();
 create or replace function plone27_open_account_p(p_product uuid,p_name text,p_owner uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare p plone27_products; k text; r jsonb; begin
  select * into p from plone27_products where id=p_product and status='active' and (valid_from is null or valid_from<=current_date) and (valid_to is null or valid_to>=current_date);
  if p.id is null then raise exception 'Producto no disponible'; end if;
@@ -818,7 +878,8 @@ declare p plone27_products; k text; r jsonb; begin
  k:=case p.kind when 'account_business' then 'business' when 'account_shared' then 'shared' when 'account_junior' then 'junior' else 'personal' end;
  r:=plone27_open_account(p.bank_id,k,p_name,p_owner,p_actor);
  update plone27_accounts set product_id=p_product,daily_limit=coalesce(p.daily_limit,daily_limit),allow_negative=(p.kind='internal_credit'),credit_limit=case when p.kind='internal_credit' then coalesce(p.credit_limit,0) else 0 end where id=(r->>'id')::uuid; return r; end $$;
-create or replace function plone27_accrue_interest(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$ declare n int:=0; a record; i numeric; begin
+create or replace function plone27_accrue_interest(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare n int:=0; a record; i numeric; begin
  for a in select ac.id,p.interest_rate r,p.fee_account fa,b.booked from plone27_accounts ac join plone27_products p on p.id=ac.product_id join plone27_account_balances b on b.account_id=ac.id
   where p.kind='internal_credit' and p.interest_rate>0 and p.fee_account is not null and ac.status='active' and b.booked<0 loop
   i:=round(-a.booked*a.r/100/12,2);
@@ -826,14 +887,16 @@ create or replace function plone27_accrue_interest(p_actor uuid) returns int lan
    exception when others then insert into plone27_incidents(kind,detail) values('interest_failed',jsonb_build_object('account',a.id,'err',sqlerrm)); end; end if; end loop; return n; end $$;
 
 -- Reversos coherentes y recibos
-create or replace function plone27_on_reversed() returns trigger language plpgsql as $$ begin
+create or replace function plone27_on_reversed() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.status='reversed' and old.status<>'reversed' then
   if new.kind='reversal' then raise exception 'No se puede revertir una reversión'; end if;
   update plone27_tax_receipts r set paid_amount=greatest(r.paid_amount-d.s,0),paid_tx=null,status=case when r.paid_amount-d.s>0 then 'partial' else 'issued' end
    from (select coalesce(sum(amount),0) s from plone27_ledger_entries where transaction_id=new.id and direction='debit') d where r.paid_tx=new.id; end if; return new; end $$;
 drop trigger if exists t_on_reversed on plone27_transactions;
 create trigger t_on_reversed before update on plone27_transactions for each row execute function plone27_on_reversed();
-create or replace function plone27_receipt_paid() returns trigger language plpgsql as $$ begin
+create or replace function plone27_receipt_paid() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.status='paid' and new.paid_amount<new.amount then new.paid_amount:=new.amount; end if; return new; end $$;
 drop trigger if exists t_receipt_paid on plone27_tax_receipts;
 create trigger t_receipt_paid before update on plone27_tax_receipts for each row execute function plone27_receipt_paid();
@@ -865,7 +928,8 @@ insert into plone27_numbering_formats(kind,version,prefix,year_scoped,width,stat
 on conflict do nothing;
 drop trigger if exists t_ref on plone27_policies;
 create trigger t_ref before insert on plone27_policies for each row execute function plone27_set_ref('POL');
-create or replace function plone27_policy_guard() returns trigger language plpgsql as $$ declare p jsonb:=new.params; begin
+create or replace function plone27_policy_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column declare p jsonb:=new.params; begin
  if tg_op='UPDATE' and old.status='published' and (new.params is distinct from old.params or new.scope is distinct from old.scope or new.bank_id is distinct from old.bank_id or new.customer_id is distinct from old.customer_id or new.dip is distinct from old.dip or new.kind is distinct from old.kind)
   then raise exception 'Norma publicada inmutable: crea una nueva'; end if;
  if (new.scope='bank' and new.bank_id is null) or (new.scope='customer' and new.customer_id is null) or (new.scope='dip' and new.dip is null) then raise exception 'La norma no indica su destinatario'; end if;
@@ -880,6 +944,7 @@ drop trigger if exists t_policy_guard on plone27_policies;
 create trigger t_policy_guard before insert or update on plone27_policies for each row execute function plone27_policy_guard();
 -- Resolución: la más específica gana; empate en el mismo nivel = incidencia y sin aplicar (nunca se elige al azar)
 create or replace function plone27_policy_resolve(p_kind text,p_account uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a plone27_accounts; v_dip text; ids uuid[]; r jsonb; begin
  select * into a from plone27_accounts where id=p_account; select c.dip into v_dip from plone27_customers c where c.id=a.customer_id;
  with c as(select p.id,case p.scope when 'global' then 1 when 'bank' then 2 else 3 end lvl from plone27_policies p where p.kind=p_kind and p.status='published' and current_date>=p.valid_from and (p.valid_to is null or current_date<=p.valid_to)
@@ -890,7 +955,8 @@ declare a plone27_accounts; v_dip text; ids uuid[]; r jsonb; begin
  select p.params||jsonb_build_object('policy',p.id,'approved_by',p.approved_by) into r from plone27_policies p where p.id=ids[1]; return r; end $$;
 -- Deuda: condiciones aplicadas por norma
 alter table plone27_debts add column if not exists origin text unique;
-create or replace function plone27_debt_terms() returns trigger language plpgsql security definer set search_path=public as $$ declare pol jsonb; begin
+create or replace function plone27_debt_terms() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare pol jsonb; begin
  if new.account_id is null then return new; end if; pol:=plone27_policy_resolve('debt_terms',new.account_id); if pol is null then return new; end if;
  if tg_op='INSERT' and pol->>'max_principal' is not null and new.principal>(pol->>'max_principal')::numeric then raise exception 'Supera el principal máximo de la norma (%)',pol->>'max_principal'; end if;
  if tg_op='UPDATE' and new.paid>old.paid and pol->>'allow_partial'='false' and new.paid<new.principal+new.authorized_charges then raise exception 'La norma no permite pagos parciales'; end if; return new; end $$;
@@ -898,6 +964,7 @@ drop trigger if exists t_debt_terms on plone27_debts;
 create trigger t_debt_terms before insert or update on plone27_debts for each row execute function plone27_debt_terms();
 -- Recargos por mora: solo con norma publicada aplicable; se crean como deuda con origen autorizado y una sola vez por recibo
 create or replace function plone27_apply_late_penalties(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare n int:=0; r record; pol jsonb; amt numeric; begin
  if not (plone27_setting('late_penalty_enabled'))::boolean then return 0; end if;
  for r in select t.id,t.ref,t.account_id,t.amount,t.paid_amount,t.due_date,ru.collector_account col from plone27_tax_receipts t join plone27_tax_rule_versions v on v.id=t.rule_version_id join plone27_tax_rules ru on ru.id=v.rule_id
@@ -912,14 +979,16 @@ create table if not exists plone27_disputes(id uuid primary key default gen_rand
 create unique index if not exists plone27_disputes_subject_type_subject_id_idx on plone27_disputes(subject_type,subject_id) where status='open';
 drop trigger if exists t_ref on plone27_disputes;
 create trigger t_ref before insert on plone27_disputes for each row execute function plone27_set_ref('DIS');
-create or replace function plone27_dispute_open(p_type text,p_subject uuid,p_reason text,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$ declare acc uuid; pol jsonb; did uuid; begin
+create or replace function plone27_dispute_open(p_type text,p_subject uuid,p_reason text,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare acc uuid; pol jsonb; did uuid; begin
  if coalesce(p_reason,'')='' then raise exception 'Motivo obligatorio'; end if;
  if p_type='receipt' then select account_id into acc from plone27_tax_receipts where id=p_subject; else select account_id into acc from plone27_debts where id=p_subject; end if;
  if acc is null then raise exception 'Objeto inexistente'; end if;
  pol:=plone27_policy_resolve('dispute',acc);
  insert into plone27_disputes(subject_type,subject_id,account_id,reason,opened_by,due_at) values(p_type,p_subject,acc,p_reason,p_actor,now()+make_interval(days=>coalesce((pol->>'max_days')::int,30))) returning plone27_disputes.id into did;
  if p_type='receipt' then update plone27_tax_receipts set disputed=true where id=p_subject; else update plone27_debts set disputed=true where id=p_subject; end if; return did; end $$;
-create or replace function plone27_dispute_resolve(p_id uuid,p_outcome text,p_note text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ declare d plone27_disputes; begin
+create or replace function plone27_dispute_resolve(p_id uuid,p_outcome text,p_note text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare d plone27_disputes; begin
  if p_outcome not in('upheld','rejected','withdrawn') then raise exception 'Resultado no válido'; end if;
  select * into d from plone27_disputes where id=p_id and status='open' for update; if d.id is null then raise exception 'Disputa no abierta'; end if;
  if p_outcome<>'withdrawn' and d.opened_by is not distinct from p_actor then raise exception 'La disputa debe resolverla otra persona'; end if;
@@ -927,7 +996,8 @@ create or replace function plone27_dispute_resolve(p_id uuid,p_outcome text,p_no
  else update plone27_debts set disputed=false,authorized_charges=case when p_outcome='upheld' then 0 else authorized_charges end,principal=case when p_outcome='upheld' then paid else principal end where id=d.subject_id; end if;
  update plone27_disputes set status=p_outcome,resolution=p_note,resolved_by=p_actor,resolved_at=now() where id=p_id;
  insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'dispute_resolved','dispute',p_id::text,jsonb_build_object('outcome',p_outcome)); end $$;
-create or replace view plone27_alerts with(security_invoker=true) as
+drop view if exists plone27_alerts cascade;
+create view plone27_alerts with(security_invoker=true) as
  select 'incidencias_abiertas' alerta,count(*) n from plone27_incidents where status='open'
  union all select 'evaluaciones_en_revision',count(*) from plone27_tax_evaluations where status='review'
  union all select 'aprobaciones_pendientes',count(*) from plone27_approvals where result is null
@@ -947,12 +1017,14 @@ do $$ declare t text; f text; begin
 -- JUNIOR: ficha de cliente con control parental heredado, aislamiento de cuentas habituales, membresía mensual; INFORMES de integridad y seguridad
 create table if not exists plone27_junior_profiles(customer_id uuid primary key references plone27_customers, birth_date date not null, guardian_user uuid not null, per_tx_limit numeric(18,2), daily_limit numeric(18,2), monthly_limit numeric(18,2),
  card_enabled boolean not null default true, locked boolean not null default false);
-do $$ begin alter table plone27_products add constraint products_junior_compat check(kind<>'account_junior' or (coalesce(credit_limit,0)=0 and interest_rate=0 and requires_guardian)); exception when duplicate_object then null; end $$;
-create or replace function plone27_account_compat() returns trigger language plpgsql as $$ begin
+do $$ begin alter table plone27_products add constraint products_junior_compat check(kind<>'account_junior' or (coalesce(credit_limit,0)=0 and interest_rate=0 and requires_guardian)) not valid; exception when duplicate_object then null; end $$;
+create or replace function plone27_account_compat() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.kind='junior' and (new.allow_negative or new.credit_limit>0) then raise exception 'Una cuenta Junior no admite descubierto ni crédito'; end if; return new; end $$;
 drop trigger if exists t_account_compat on plone27_accounts;
 create trigger t_account_compat before insert or update on plone27_accounts for each row execute function plone27_account_compat();
-create or replace function plone27_card_compat() returns trigger language plpgsql security definer set search_path=public as $$ declare a plone27_accounts; j plone27_junior_profiles; begin
+create or replace function plone27_card_compat() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare a plone27_accounts; j plone27_junior_profiles; begin
  select * into a from plone27_accounts where id=new.account_id; if a.kind<>'junior' then return new; end if;
  if new.kind='credit' then raise exception 'Una cuenta Junior no admite tarjeta de crédito'; end if;
  select * into j from plone27_junior_profiles where customer_id=a.customer_id; if j.customer_id is not null and not j.card_enabled then raise exception 'El control parental no permite tarjetas'; end if; return new; end $$;
@@ -962,7 +1034,8 @@ create trigger t_card_compat before insert on plone27_cards for each row execute
 create table if not exists plone27_subscriptions(id uuid primary key default gen_random_uuid(), account_id uuid unique not null references plone27_accounts, product_id uuid references plone27_products,
  status text not null default 'past_due' check(status in('active','past_due','expired','cancelled')), period_start date, period_end date not null default current_date, auto_renew boolean not null default true,
  renewals int not null default 0, last_tx uuid references plone27_transactions, created_at timestamptz default now());
-create or replace function plone27_sub_create() returns trigger language plpgsql as $$ begin
+create or replace function plone27_sub_create() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
  if new.kind='junior' and new.product_id is not null and old.product_id is null then insert into plone27_subscriptions(account_id,product_id) values(new.id,new.product_id) on conflict do nothing; end if; return new; end $$;
 drop trigger if exists t_sub_create on plone27_accounts;
 create trigger t_sub_create after update of product_id on plone27_accounts for each row execute function plone27_sub_create();
@@ -974,6 +1047,7 @@ create or replace function plone27_user_can(p_user uuid,p_account uuid) returns 
  select exists(select 1 from plone27_account_members where account_id=p_account and user_id=p_user) or exists(select 1 from plone27_juniors where account_id=p_account and guardian_user=p_user)
   or exists(select 1 from plone27_accounts a join plone27_junior_profiles j on j.customer_id=a.customer_id where a.id=p_account and j.guardian_user=p_user) $$;
 create or replace function plone27_subscription_renew(p_account uuid,p_user uuid,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare s plone27_subscriptions; p plone27_products; tx uuid; ne date; w int:=(plone27_setting('junior_renewal_window_days')#>>'{}')::int; begin
  select * into s from plone27_subscriptions where account_id=p_account for update; if s.id is null then raise exception 'La cuenta no tiene membresía'; end if;
  if s.status='cancelled' then raise exception 'Membresía cancelada'; end if;
@@ -986,6 +1060,7 @@ declare s plone27_subscriptions; p plone27_products; tx uuid; ne date; w int:=(p
  update plone27_subscriptions set status='active',period_start=greatest(s.period_end,current_date),period_end=ne,renewals=renewals+1,last_tx=tx where id=s.id;
  return jsonb_build_object('renewed',true,'period_end',ne,'transaction',tx); end $$;
 create or replace function plone27_subscriptions_sweep(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare s record; r jsonb; ren int:=0; exp int:=0; g int:=(plone27_setting('junior_membership_grace_days')#>>'{}')::int; begin
  for s in select * from plone27_subscriptions where status in('active','past_due') and period_end<=current_date loop
   if s.auto_renew then r:=plone27_subscription_renew(s.account_id,null,p_actor); if (r->>'renewed')='true' then ren:=ren+1; continue; end if; end if;
@@ -993,6 +1068,7 @@ declare s record; r jsonb; ren int:=0; exp int:=0; g int:=(plone27_setting('juni
  return jsonb_build_object('renewed',ren,'expired',exp); end $$;
 -- Reglas Junior en el libro: control parental heredado de la ficha + membresía vigente + sin cuentas habituales
 create or replace function plone27_junior_profile() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a plone27_accounts; j plone27_junior_profiles; k text; s plone27_subscriptions; ud numeric; um numeric; begin
  if new.direction<>'debit' then return new; end if; select * into a from plone27_accounts where id=new.account_id; if a.kind<>'junior' then return new; end if;
  select kind into k from plone27_transactions where id=new.transaction_id; if k in('reversal','membership') then return new; end if;
@@ -1006,7 +1082,8 @@ declare a plone27_accounts; j plone27_junior_profiles; k text; s plone27_subscri
  if j.monthly_limit is not null and um+new.amount>j.monthly_limit then raise exception 'Control parental: supera el límite mensual (% Pz)',j.monthly_limit; end if; return new; end $$;
 drop trigger if exists t_junior_profile on plone27_ledger_entries;
 create trigger t_junior_profile before insert on plone27_ledger_entries for each row execute function plone27_junior_profile();
-create or replace function plone27_junior_counterparty() returns trigger language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_junior_counterparty() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
  if exists(select 1 from (select distinct n.transaction_id from new_rows n join plone27_transactions t on t.id=n.transaction_id where t.kind<>'reversal') x
   where exists(select 1 from plone27_ledger_entries e join plone27_accounts a on a.id=e.account_id where e.transaction_id=x.transaction_id and a.kind='junior')
    and exists(select 1 from plone27_ledger_entries e join plone27_accounts a on a.id=e.account_id where e.transaction_id=x.transaction_id and a.kind in('personal','shared','business')))
@@ -1014,6 +1091,7 @@ create or replace function plone27_junior_counterparty() returns trigger languag
 drop trigger if exists t_junior_cp on plone27_ledger_entries;
 create trigger t_junior_cp after insert on plone27_ledger_entries referencing new table as new_rows for each statement execute function plone27_junior_counterparty();
 create or replace function plone27_ledger_limits() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a plone27_accounts; k text; j plone27_juniors; used numeric; dl numeric; jl numeric; begin
  if new.direction<>'debit' then return new; end if;
  select kind into k from plone27_transactions where id=new.transaction_id; if k in('reversal','tax_refund','membership') then return new; end if;
@@ -1072,7 +1150,8 @@ alter table plone27_banks add column if not exists main_account uuid references 
   add column if not exists tax_account uuid references plone27_accounts;
 alter table plone27_accounts add column if not exists collectable boolean not null default true;  -- false = no embargable (cartera RBU)
 
-create or replace function plone27_bank_accounts_guard() returns trigger language plpgsql as $$ begin
+create or replace function plone27_bank_accounts_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
   if new.main_account is not null and not exists(select 1 from plone27_accounts a where a.id=new.main_account and a.bank_id=new.id)
     then raise exception 'La cuenta principal debe pertenecer a la propia entidad'; end if;
   if new.tax_account is not null and not exists(select 1 from plone27_accounts a where a.id=new.tax_account and a.bank_id=new.id)
@@ -1082,17 +1161,20 @@ drop trigger if exists t_bank_accounts on plone27_banks;
 drop trigger if exists t_bank_accounts on plone27_banks;
 create trigger t_bank_accounts before insert or update on plone27_banks for each row execute function plone27_bank_accounts_guard();
 
-create or replace function plone27_bank_set_accounts(p_bank uuid,p_main uuid,p_tax uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_bank_set_accounts(p_bank uuid,p_main uuid,p_tax uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   update plone27_banks set main_account=p_main,tax_account=p_tax where id=p_bank;
   insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'bank_accounts','bank',p_bank::text,jsonb_build_object('main',p_main,'tax',p_tax));
 end $$;
 
 create or replace function plone27_main_account(p_bank uuid) returns uuid language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare acc uuid; begin
   select main_account into acc from plone27_banks where id=p_bank;
   if acc is null then raise exception 'La entidad no tiene cuenta principal configurada'; end if; return acc; end $$;
 
 create or replace function plone27_reserve_account() returns uuid language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare acc uuid; begin
   select nullif(value,'')::uuid into acc from plone27_config where key='cuenta_reserva';
   if acc is null then raise exception 'Falta la Cuenta de Reserva del Grupo (ejecuta el seed 0011)'; end if; return acc; end $$;
@@ -1102,6 +1184,7 @@ create or replace function plone27_collectable(p_account uuid,p_amount numeric) 
 
 -- Suma meses a una fecha conservando el día de anclaje (31 → 30/28 si el mes es más corto)
 create or replace function plone27_add_months(p_from date,p_months int,p_anchor int) returns date language plpgsql stable as $$
+#variable_conflict use_column
 declare base date; last_day int; begin
   base:=(p_from+make_interval(months=>p_months))::date;
   last_day:=extract(day from (date_trunc('month',base)+interval '1 month - 1 day'))::int;
@@ -1121,7 +1204,8 @@ insert into plone27_settings(key,category,description,vtype,allowed,min_v,max_v,
 on conflict(key) do nothing;
 
 -- Tope de la tasa de transferencia (Art. 4.3: nunca superior al 12 %)
-create or replace function plone27_fee_cap() returns trigger language plpgsql as $$ begin
+create or replace function plone27_fee_cap() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
   if new.method='percent' and new.rate>(plone27_setting('tasas_transferencia_max_pct')#>>'{}')::numeric
     then raise exception 'La tasa de transferencia supera el tope central (Art. 4.3)'; end if;
   return new; end $$;
@@ -1132,7 +1216,7 @@ create trigger t_fee_cap before insert or update on plone27_fee_rules for each r
 -- ========== 3. MOTOR FISCAL: tramo fijo para cotizaciones, publicación con aprobador, impuestos de entidad ==========
 alter table plone27_tax_rule_versions drop constraint if exists plone27_tax_rule_versions_method_check;
 do $$ begin alter table plone27_tax_rule_versions add constraint plone27_tax_rule_versions_method_check
-  check(method in('percent','fixed','brackets','bracket_flat')); exception when duplicate_object then null; end $$;  -- bracket_flat: todo el bruto al tipo de su tramo (Art. 4.5)
+  check(method in('percent','fixed','brackets','bracket_flat')) not valid; exception when duplicate_object then null; end $$;  -- bracket_flat: todo el bruto al tipo de su tramo (Art. 4.5)
 
 create or replace function plone27_tax_calc(p_version uuid,p_base numeric) returns numeric language sql stable as $$
  select round(least(coalesce(v.max_amount,'infinity'),greatest(coalesce(v.min_amount,0),
@@ -1148,6 +1232,7 @@ create or replace function plone27_tax_calc(p_version uuid,p_base numeric) retur
 
 -- Publicar exige un aprobador distinto del autor (gobernanza de la Junta)
 create or replace function plone27_tax_publish(p_version uuid,p_approver uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare v plone27_tax_rule_versions; begin
   select * into v from plone27_tax_rule_versions where id=p_version for update;
   if v.id is null or v.status<>'draft' then raise exception 'La versión no está en borrador'; end if;
@@ -1165,6 +1250,7 @@ create or replace function plone27_active_version(p_code text,p_date date) retur
 -- Impuesto de entidad: se cobra de la cuenta de impuestos de la entidad (o de la principal). Cada entidad decide de dónde paga.
 create or replace function plone27_tax_issue_bank(p_code text,p_bank uuid,p_base numeric,p_event_key text,p_op text,p_pathway text,p_due date,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare acc uuid; begin
   select coalesce(tax_account,main_account) into acc from plone27_banks where id=p_bank;
   if acc is null then raise exception 'La entidad no tiene cuenta de impuestos ni principal'; end if;
@@ -1202,6 +1288,7 @@ create table if not exists plone27_plan_items(
 -- Amortización francesa (cuota constante). Interés mensual = tipo anual / 12, sobre el saldo vivo. La última cuota absorbe el redondeo.
 create or replace function plone27_plan_schedule(p_principal numeric,p_rate numeric,p_n int,p_start date,p_anchor int)
 returns table(seq int,due_date date,principal_part numeric,interest_part numeric) language plpgsql stable as $$
+#variable_conflict use_column
 declare m numeric:=p_rate/1200; cuota numeric; saldo numeric:=p_principal; i_p numeric; c_p numeric; k int; begin
   if p_n<1 then raise exception 'Número de cuotas inválido'; end if;
   cuota:=case when m=0 then round(p_principal/p_n,2) else round(p_principal*m/(1-power(1+m,-p_n)),2) end;
@@ -1216,6 +1303,7 @@ declare m numeric:=p_rate/1200; cuota numeric; saldo numeric:=p_principal; i_p n
 -- Crea un plan. Cuotas: la cuenta principal de la entidad desembolsa el capital al beneficiario y cobra capital+interés en cada cuota.
 create or replace function plone27_plan_create(p_key text,p_kind text,p_debtor uuid,p_beneficiary uuid,p_principal numeric,p_installments int,p_start date,p_approved_by uuid,p_actor uuid)
 returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare bk uuid; rate numeric:=0; lender uuid; pid uuid; anchor int; s record; begin
   if p_approved_by is null then raise exception 'Crear un plan exige aprobación registrada'; end if;
   if p_kind not in('installment','subscription') then raise exception 'Tipo de plan no válido'; end if;
@@ -1248,6 +1336,7 @@ end $$;
 
 -- Cobro de cuotas y suscripciones vencidas. Sin fondos: queda pendiente y se reintenta cada día (sin duplicar).
 create or replace function plone27_plans_collect(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare it record; pl record; amt numeric; tx uuid; cobradas int:=0; pendientes int:=0; begin
   for it in select i.*,p.debtor_account,p.lender_account from plone27_plan_items i join plone27_plans p on p.id=i.plan_id
     where i.status='pending' and i.due_date<=current_date and p.status in('active','past_due') order by i.due_date,i.id loop
@@ -1288,6 +1377,7 @@ create table if not exists plone27_late_accruals(source text not null check(sour
 
 -- Devengo: capital pendiente × tipo anual × segundos / 365 días. Se liquida al céntimo; si no llega a 0,01 no se pierde: se acumula.
 create or replace function plone27_mora_run(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare it record; rc record; rate numeric; grace int; since timestamptz; secs numeric; amt numeric; gen int:=0; begin
   rate:=(plone27_setting('demora_anual_pct')#>>'{}')::numeric; grace:=(plone27_setting('periodo_gracia_mora_dias')#>>'{}')::int;
   if rate<=0 then return jsonb_build_object('devengos',0,'motivo','tipo de demora sin aprobar'); end if;
@@ -1330,6 +1420,7 @@ end $$;
 
 -- ========== 6. AUTOCOBRO: recibos fiscales y deudas (nunca de cuentas no embargables) ==========
 create or replace function plone27_autocollect_taxes(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r record; n int:=0; begin
   if not (plone27_setting('autocobro_habilitado'))::boolean then return 0; end if;
   for r in select t.id,t.account_id,t.amount-t.paid_amount pend from plone27_tax_receipts t
@@ -1340,6 +1431,7 @@ declare r record; n int:=0; begin
   end loop; return n; end $$;
 
 create or replace function plone27_autocollect_debts(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r record; n int:=0; begin
   if not (plone27_setting('autocobro_habilitado'))::boolean then return 0; end if;
   for r in select d.id,d.account_id,d.creditor_account,d.principal+d.authorized_charges-d.paid pend from plone27_debts d
@@ -1372,6 +1464,7 @@ create table if not exists plone27_payslips(
 
 -- Un contrato no se valida si su bruto semanal equivalente (mensual × 12 / 52) queda por debajo del SMI
 create or replace function plone27_contract_guard() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare smi numeric; ek text; wk text; begin
   select kind into ek from plone27_accounts where id=new.employer_account and bank_id=new.bank_id;
   select kind into wk from plone27_accounts where id=new.worker_account and bank_id=new.bank_id;
@@ -1386,6 +1479,7 @@ create trigger t_contract_guard before insert or update on plone27_contracts for
 
 create or replace function plone27_contract_create(p_employer uuid,p_worker uuid,p_worker_user uuid,p_gross numeric,p_start date,p_pay_day int,p_approved_by uuid,p_actor uuid)
 returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare bk uuid; pd int; first_pay date; cid uuid; begin
   if p_approved_by is null then raise exception 'El contrato exige aprobación registrada'; end if;
   select bank_id into bk from plone27_accounts where id=p_employer; if bk is null then raise exception 'Cuenta empleadora inexistente'; end if;
@@ -1399,6 +1493,7 @@ declare bk uuid; pd int; first_pay date; cid uuid; begin
 -- Nómina: empresa paga bruto + cotización empresa; trabajador recibe bruto − cotización trabajador − IRP.
 -- Ambas cotizaciones e IRP van a sus cuentas recaudadoras (Cuenta de Reserva por defecto). Cada contrato es aislado.
 create or replace function plone27_payroll_run(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare c record; v_wt uuid; v_we uuid; v_ir uuid; res uuid; col_irp uuid; wc numeric; ec numeric; ir numeric; lines jsonb; tx uuid; ok int:=0; ko int:=0; begin
   res:=plone27_reserve_account();
   select collector_account into col_irp from plone27_tax_rules where code='IRP';
@@ -1436,6 +1531,7 @@ create table if not exists plone27_rbu_bonuses(
 
 -- Emite el bono de la semana para cada usuario activo. Excluye a menores con control parental (ficha Junior).
 create or replace function plone27_rbu_issue_week(p_week date,p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare u record; wal uuid; bk uuid; n int:=0; amt numeric:=(plone27_setting('rbu_semanal_pz')#>>'{}')::numeric; begin
   for u in select distinct m.user_id from plone27_account_members m join plone27_accounts a on a.id=m.account_id
     where a.kind='personal' and a.status='active' and m.role='holder'
@@ -1455,12 +1551,14 @@ declare u record; wal uuid; bk uuid; n int:=0; amt numeric:=(plone27_setting('rb
   end loop; return n; end $$;
 
 create or replace function plone27_rbu_expire(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare n int; begin
   with x as(update plone27_rbu_bonuses set status='expired' where status='available' and expires_on<=current_date returning 1)
   select count(*) into n from x; return n; end $$;
 
 -- Reclamación manual por el propio titular. Fondos desde la Cuenta de Reserva (financiada por cotizaciones).
 create or replace function plone27_rbu_claim(p_bonus uuid,p_user uuid,p_key text) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare b plone27_rbu_bonuses; tx uuid; res uuid; begin
   select * into b from plone27_rbu_bonuses where id=p_bonus for update;
   if b.id is null or b.owner_user is distinct from p_user then raise exception 'Bono no encontrado'; end if;
@@ -1473,7 +1571,8 @@ declare b plone27_rbu_bonuses; tx uuid; res uuid; begin
   return tx; end $$;
 
 -- ========== 9. INTERÉS DEL CRÉDITO INTERNO: se abona en la cuenta principal de la entidad ==========
-create or replace function plone27_accrue_interest(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$ declare n int:=0; a record; i numeric; begin
+create or replace function plone27_accrue_interest(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column declare n int:=0; a record; i numeric; begin
   for a in select ac.id,p.interest_rate r,coalesce(bk.main_account,p.fee_account) fa,b.booked from plone27_accounts ac
     join plone27_products p on p.id=ac.product_id left join plone27_banks bk on bk.id=ac.bank_id join plone27_account_balances b on b.account_id=ac.id
     where p.kind='internal_credit' and p.interest_rate>0 and coalesce(bk.main_account,p.fee_account) is not null and ac.status='active' and b.booked<0 loop
@@ -1489,6 +1588,7 @@ create or replace function plone27_log_step(p_step text,p_err text) returns void
   insert into plone27_incidents(kind,detail) values('finanzas_diario',jsonb_build_object('paso',p_step,'err',p_err)) $$;
 
 create or replace function plone27_finanzas_daily(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r jsonb:='{}'::jsonb; begin
   begin r:=r||jsonb_build_object('rbu_caducados',plone27_rbu_expire(p_actor)); exception when others then perform plone27_log_step('rbu_caducados',sqlerrm); end;
   begin r:=r||jsonb_build_object('rbu_emitidos',plone27_rbu_issue_week(date_trunc('week',current_date)::date,p_actor)); exception when others then perform plone27_log_step('rbu_emitidos',sqlerrm); end;
@@ -1532,7 +1632,8 @@ on conflict(key) do nothing;
 -- ========== 2. TRAZABILIDAD DEL RECIBO: obligado y origen de la operación (T20.3, T46) ==========
 alter table plone27_tax_receipts add column if not exists obligor_account uuid references plone27_accounts,
   add column if not exists operation_ref text;
-create or replace function plone27_receipt_routing() returns trigger language plpgsql as $$ begin
+create or replace function plone27_receipt_routing() returns trigger language plpgsql as $$
+#variable_conflict use_column begin
   new.obligor_account:=nullif(current_setting('plone27.obligor',true),'')::uuid;
   new.operation_ref:=nullif(current_setting('plone27.operacion',true),'');
   return new; end $$;
@@ -1552,6 +1653,7 @@ create or replace function plone27_version_fp(p_version uuid) returns text langu
 
 -- Publicar sella la huella en la misma operación (la versión queda inmutable por rv_guard)
 create or replace function plone27_tax_publish(p_version uuid,p_approver uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare v plone27_tax_rule_versions; begin
   select * into v from plone27_tax_rule_versions where id=p_version for update;
   if v.id is null or v.status<>'draft' then raise exception 'La versión no está en borrador'; end if;
@@ -1562,6 +1664,7 @@ end $$;
 
 -- Tramos inmutables una vez publicada la versión (las evaluaciones también son de solo añadir)
 create or replace function plone27_bracket_guard() returns trigger language plpgsql as $$
+#variable_conflict use_column
 declare vid uuid; begin
   vid:=case when tg_op='DELETE' then old.version_id else new.version_id end;
   if exists(select 1 from plone27_tax_rule_versions v where v.id=vid and v.status='published') then raise exception 'Tramos de una versión publicada: inmutables'; end if;
@@ -1575,6 +1678,7 @@ create trigger t_eval_ro before update or delete on plone27_tax_evaluations for 
 
 -- ========== 4. DESGLOSE DEL CÁLCULO: cada tramo con su base e importe, sin redondear hasta el final (igual que plone27_tax_calc) ==========
 create or replace function plone27_tax_trace(p_version uuid,p_base numeric) returns jsonb language plpgsql stable as $$
+#variable_conflict use_column
 declare v plone27_tax_rule_versions; res jsonb:='[]'::jsonb; b record; part numeric; begin
   select * into v from plone27_tax_rule_versions where id=p_version;
   if v.id is null then return null; end if;
@@ -1607,6 +1711,7 @@ language sql immutable as $$ select p_prev||'|'||p_kind||'|'||p_subject::text||'
 
 create or replace function plone27_cert_append(p_kind text,p_subject uuid,p_version uuid,p_base numeric,p_amount numeric,p_inputs jsonb) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare prev text; fp text; bt text:=p_base::numeric(18,2)::text; am text:=p_amount::numeric(18,2)::text; h text; cid uuid; begin
   perform pg_advisory_xact_lock(hashtext('plone27_cert'));
   select hash into prev from plone27_tax_certificates order by seq desc limit 1; prev:=coalesce(prev,'GENESIS');
@@ -1618,6 +1723,7 @@ declare prev text; fp text; bt text:=p_base::numeric(18,2)::text; am text:=p_amo
 
 -- Todo recibo se certifica al nacer. Si el importe no coincide con la norma (regularización o ajuste), se marca como tal.
 create or replace function plone27_cert_receipt() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare kind text; begin
   kind:=case when new.amount=plone27_tax_calc(new.rule_version_id,new.base) then 'recibo' else 'regularizacion' end;
   perform plone27_cert_append(kind,new.id,new.rule_version_id,new.base,new.amount,
@@ -1637,6 +1743,7 @@ create or replace function plone27_receipt_certificate(p_receipt uuid) returns j
 
 -- Informe de veracidad: recalcula toda la cadena y cada importe con la norma vigente
 create or replace function plone27_certification_report() returns jsonb language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare c record; prev text:='GENESIS'; h text; total int:=0; rota int:=0; disc int:=0; alterados int; reg int:=0; fpd int; sin int; begin
   for c in select * from plone27_tax_certificates order by seq loop
     total:=total+1;
@@ -1660,13 +1767,15 @@ declare c record; prev text:='GENESIS'; h text; total int:=0; rota int:=0; disc 
 end $$;
 
 -- ========== 6. PAGADOR JUNIOR (Capitalia) ==========
-create or replace function plone27_set_junior_payer(p_bank uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_set_junior_payer(p_bank uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if not exists(select 1 from plone27_banks where id=p_bank and main_account is not null) then raise exception 'La entidad necesita cuenta principal'; end if;
   insert into plone27_config(key,value) values('entidad_capitalia',p_bank::text) on conflict(key) do update set value=excluded.value;
   insert into plone27_audit_log(actor,action,entity,entity_id) values(p_actor,'junior_payer','bank',p_bank::text);
 end $$;
 
 create or replace function plone27_junior_tax_payer() returns uuid language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare acc uuid; begin
   if (plone27_setting('capitalia_asume_impuestos_junior')#>>'{}')::boolean then
     select bk.main_account into acc from plone27_config c join plone27_banks bk on bk.id=nullif(c.value,'')::uuid where c.key='entidad_capitalia';
@@ -1680,6 +1789,7 @@ declare acc uuid; begin
 -- Impuesto de una operación Junior: el obligado queda registrado (el usuario Junior) y el pago sale de la cuenta pagadora
 create or replace function plone27_tax_issue_junior(p_code text,p_junior uuid,p_base numeric,p_event_key text,p_op text,p_pathway text,p_due date,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare payer uuid; rid uuid; begin
   if (select kind from plone27_accounts where id=p_junior) is distinct from 'junior' then raise exception 'La cuenta no es Junior'; end if;
   payer:=plone27_junior_tax_payer();
@@ -1692,6 +1802,7 @@ declare payer uuid; rid uuid; begin
 -- ========== 7. OPERACIONES SUJETAS: venta con IVA desglosado (Art. 4.4 y T26–T28) ==========
 create or replace function plone27_sale(p_key text,p_buyer uuid,p_seller uuid,p_base numeric,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare vid uuid; iva numeric:=0; tx uuid; rid uuid; due date:=current_date+(plone27_setting('default_receipt_due_days')#>>'{}')::int; begin
   if p_base<=0 then raise exception 'Base de venta no válida'; end if;
   vid:=plone27_active_version('IVA',current_date);
@@ -1713,6 +1824,7 @@ declare vid uuid; iva numeric:=0; tx uuid; rid uuid; due date:=current_date+(plo
 -- ========== 8. BASES DECLARADAS (IRM, IBA, IGF, IPE, ITP): el cálculo es automático, la base la declara alguien y la aprueba otra persona ==========
 create or replace function plone27_tax_declare(p_code text,p_account uuid,p_periodo text,p_base numeric,p_declarante uuid,p_aprobador uuid,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare rid uuid; due date:=current_date+(plone27_setting('default_receipt_due_days')#>>'{}')::int; begin
   if p_aprobador is null or p_aprobador is not distinct from p_declarante then raise exception 'La declaración exige la aprobación de otra persona'; end if;
   if (select kind from plone27_accounts where id=p_account)='junior' then
@@ -1731,12 +1843,14 @@ create table if not exists plone27_activities(id uuid primary key default gen_ra
   created_at timestamptz not null default now());
 
 create or replace function plone27_activity_register(p_account uuid,p_category text,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare aid uuid; begin
   if not exists(select 1 from plone27_accounts where id=p_account and kind in('business','personal') and status='active') then raise exception 'La actividad requiere una cuenta activa'; end if;
   insert into plone27_activities(account_id,category) values(p_account,p_category) returning id into aid;
   insert into plone27_audit_log(actor,action,entity,entity_id) values(p_actor,'activity_register','activity',aid::text); return aid; end $$;
 
 create or replace function plone27_iaep_monthly(p_period date,p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare a record; vid uuid; amt numeric; rid uuid; n int:=0; begin
   for a in select * from plone27_activities where status='active' and registered_at<=p_period loop
     select ver.id into vid from plone27_tax_rule_versions ver join plone27_tax_rules ru on ru.id=ver.rule_id
@@ -1755,6 +1869,7 @@ create or replace function plone27_bracket_rate(p_version uuid,p_value numeric) 
 
 -- Recargo = pendiente × tipo del tramo vigente − lo ya recargado. Solo cambia si sube el tramo. Nunca se devuelve si baja.
 create or replace function plone27_t57_run(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r record; vid uuid; rate numeric; dias int; target numeric; previo numeric; diff numeric; did uuid; n int:=0; begin
   vid:=plone27_active_version('RECARGO_T57',current_date);
   if vid is null then return 0; end if;   -- sin norma T57 publicada no hace nada
@@ -1777,6 +1892,7 @@ declare r record; vid uuid; rate numeric; dias int; target numeric; previo numer
 
 -- ========== 11. AUTOCOBRO: sin importes a cero (un cobro de 0 Pz no es un cobro) ==========
 create or replace function plone27_autocollect_taxes(p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r record; n int:=0; begin
   if not (plone27_setting('autocobro_habilitado'))::boolean then return 0; end if;
   for r in select t.id,t.account_id,t.amount-t.paid_amount pend from plone27_tax_receipts t
@@ -1788,6 +1904,7 @@ declare r record; n int:=0; begin
 
 -- ========== 12. EJECUCIÓN DIARIA (sustituye la de 0011): recargos T57, IAEP, certificación ==========
 create or replace function plone27_finanzas_daily(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r jsonb:='{}'::jsonb; begin
   begin r:=r||jsonb_build_object('rbu_caducados',plone27_rbu_expire(p_actor)); exception when others then perform plone27_log_step('rbu_caducados',sqlerrm); end;
   begin r:=r||jsonb_build_object('rbu_emitidos',plone27_rbu_issue_week(date_trunc('week',current_date)::date,p_actor)); exception when others then perform plone27_log_step('rbu_emitidos',sqlerrm); end;
@@ -1853,7 +1970,8 @@ create or replace function plone27_es_institucional(p_acc uuid) returns boolean 
       or exists(select 1 from plone27_banks b where b.main_account=p_acc or b.tax_account=p_acc)
       or exists(select 1 from plone27_institutional_accounts i where i.account_id=p_acc) $$;
 
-create or replace function plone27_institutional_set(p_account uuid,p_motivo text,p_junior boolean,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_institutional_set(p_account uuid,p_motivo text,p_junior boolean,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if coalesce(length(p_motivo),0)<10 then raise exception 'Motivo obligatorio (mín. 10 caracteres)'; end if;
   if not exists(select 1 from plone27_accounts where id=p_account) then raise exception 'Cuenta inexistente'; end if;
   insert into plone27_institutional_accounts(account_id,motivo,puede_operar_junior,aprobado_por) values(p_account,p_motivo,coalesce(p_junior,false),p_actor)
@@ -1862,7 +1980,8 @@ create or replace function plone27_institutional_set(p_account uuid,p_motivo tex
 end $$;
 
 -- Junior: solo las cuentas institucionales marcadas pueden operar con cuentas Junior (junior con junior sigue igual)
-create or replace function plone27_junior_counterparty() returns trigger language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_junior_counterparty() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if exists(select 1 from (select distinct n.transaction_id from new_rows n join plone27_transactions t on t.id=n.transaction_id where t.kind<>'reversal') x
     where exists(select 1 from plone27_ledger_entries e join plone27_accounts a on a.id=e.account_id where e.transaction_id=x.transaction_id and a.kind='junior')
       and exists(select 1 from plone27_ledger_entries e join plone27_accounts a on a.id=e.account_id
@@ -1873,6 +1992,7 @@ create or replace function plone27_junior_counterparty() returns trigger languag
 
 -- Destinos de cada impuesto: solo cuentas institucionales
 create or replace function plone27_tax_set_destination(p_code text,p_account uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare old uuid; begin
   if not plone27_es_institucional(p_account) then raise exception 'El destino debe ser una cuenta institucional'; end if;
   select collector_account into old from plone27_tax_rules where code=p_code;
@@ -1882,7 +2002,8 @@ declare old uuid; begin
 end $$;
 
 -- Cuentas de configuración (IBAN de tributos y origen de la RBU). Solo institucionales.
-create or replace function plone27_config_set(p_key text,p_account uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_config_set(p_key text,p_account uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if p_key not in('cuenta_tributos','cuenta_rbu_origen') then raise exception 'Clave no permitida: %',p_key; end if;
   if not plone27_es_institucional(p_account) then raise exception 'La cuenta debe ser institucional'; end if;
   insert into plone27_config(key,value) values(p_key,p_account::text) on conflict(key) do update set value=excluded.value;
@@ -1914,6 +2035,7 @@ create table if not exists plone27_iva_findings(
 
 -- IVA sobre un importe total: devuelve base e IVA según el criterio configurado. Sin norma vigente: IVA null.
 create or replace function plone27_iva_split(p_total numeric) returns table(base numeric, iva numeric) language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare vid uuid; tasa numeric; begin
   vid:=plone27_active_version('IVA',current_date);
   if vid is null then base:=p_total; iva:=null; return next; return; end if;
@@ -1925,6 +2047,7 @@ declare vid uuid; tasa numeric; begin
 -- Venta de la plataforma: el comprador paga base + IVA y el vendedor liquida el IVA. Queda registrada como venta.
 create or replace function plone27_sale(p_key text,p_buyer uuid,p_seller uuid,p_base numeric,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare vid uuid; iva numeric:=0; tx uuid; rid uuid; due date:=current_date+(plone27_setting('default_receipt_due_days')#>>'{}')::int; begin
   if p_base<=0 then raise exception 'Base de venta no válida'; end if;
   vid:=plone27_active_version('IVA',current_date);
@@ -1947,6 +2070,7 @@ declare vid uuid; iva numeric:=0; tx uuid; rid uuid; due date:=current_date+(plo
 -- Detección: cobros comerciales sin venta registrada, patrones de comercio en cuentas personales y fraccionamiento.
 -- Idempotente: cada hallazgo tiene una clave única. No cambia dinero: solo registra.
 create or replace function plone27_iva_scan(p_desde timestamptz,p_hasta timestamptz,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare rr record; sp record; n1 int:=0; n3 int:=0; n4 int:=0; umbral numeric; patron int; ventana int; ivad numeric; sev text; begin
   umbral:=(plone27_setting('iva_umbral_fraccionamiento')#>>'{}')::numeric;
   patron:=(plone27_setting('iva_patron_pagadores')#>>'{}')::int;
@@ -2008,7 +2132,8 @@ declare rr record; sp record; n1 int:=0; n3 int:=0; n4 int:=0; umbral numeric; p
 end $$;
 
 -- Regla de cuatro ojos: quien propone no aprueba. Solo se propone «regularizar» o «descartar».
-create or replace function plone27_iva_propose(p_finding uuid,p_accion text,p_motivo text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_iva_propose(p_finding uuid,p_accion text,p_motivo text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if p_accion not in('regularizar','descartar') then raise exception 'Acción no válida'; end if;
   if coalesce(length(p_motivo),0)<10 then raise exception 'Motivo obligatorio (mín. 10 caracteres)'; end if;
   update plone27_iva_findings set propuesta_accion=p_accion,motivo=p_motivo,propuesto_por=p_actor where id=p_finding and status='abierto';
@@ -2017,6 +2142,7 @@ create or replace function plone27_iva_propose(p_finding uuid,p_accion text,p_mo
 end $$;
 
 create or replace function plone27_iva_approve(p_finding uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare f plone27_iva_findings; base_ numeric; iva_ numeric; rid uuid; due date:=current_date+(plone27_setting('default_receipt_due_days')#>>'{}')::int; begin
   select * into f from plone27_iva_findings where id=p_finding for update;
   if f.id is null or f.status<>'abierto' then raise exception 'Hallazgo no abierto'; end if;
@@ -2056,13 +2182,14 @@ create or replace function plone27_iva_report(p_desde date,p_hasta date) returns
 alter table plone27_tax_certificates drop constraint if exists plone27_tax_certificates_kind_subject_id_key;
 alter table plone27_tax_certificates drop constraint if exists plone27_tax_certificates_kind_check;
 do $$ begin alter table plone27_tax_certificates add constraint plone27_tax_certificates_kind_check
-  check(kind in('recibo','regularizacion','recargo','rectificacion')); exception when duplicate_object then null; end $$;
+  check(kind in('recibo','regularizacion','recargo','rectificacion')) not valid; exception when duplicate_object then null; end $$;
 alter table plone27_tax_certificates add column if not exists reemplaza uuid references plone27_tax_certificates(id),
   add column if not exists motivo text;
 create index if not exists plone27_cert_subject_idx on plone27_tax_certificates(subject_id,seq);
 
 create or replace function plone27_cert_insert(p_kind text,p_subject uuid,p_version uuid,p_base numeric,p_amount numeric,p_inputs jsonb,p_reemplaza uuid,p_motivo text)
 returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare prev text; fp text; bt text:=p_base::numeric(18,2)::text; am text:=p_amount::numeric(18,2)::text; h text; cid uuid; begin
   perform pg_advisory_xact_lock(hashtext('plone27_cert'));
   select hash into prev from plone27_tax_certificates order by seq desc limit 1; prev:=coalesce(prev,'GENESIS');
@@ -2073,10 +2200,12 @@ declare prev text; fp text; bt text:=p_base::numeric(18,2)::text; am text:=p_amo
   return cid; end $$;
 
 create or replace function plone27_cert_append(p_kind text,p_subject uuid,p_version uuid,p_base numeric,p_amount numeric,p_inputs jsonb) returns uuid
-language plpgsql security definer set search_path=public as $$ begin
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   return plone27_cert_insert(p_kind,p_subject,p_version,p_base,p_amount,p_inputs,null,null); end $$;
 
 create or replace function plone27_cert_receipt_update() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare prevc uuid; begin
   select id into prevc from plone27_tax_certificates where subject_id=new.id order by seq desc limit 1;
   perform plone27_cert_insert('rectificacion',new.id,new.rule_version_id,new.base,new.amount,
@@ -2101,6 +2230,7 @@ create or replace function plone27_receipt_certificate(p_receipt uuid) returns j
 
 -- Informe de veracidad (sustituye al de 0012): cadena, cálculo, huellas, cambios sin certificado y recibos sin certificar
 create or replace function plone27_certification_report() returns jsonb language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare c record; prev text:='GENESIS'; h text; total int:=0; rota int:=0; disc int:=0; alterados int; reg int:=0; fpd int; sin int; begin
   for c in select * from plone27_tax_certificates order by seq loop
     total:=total+1;
@@ -2126,12 +2256,14 @@ end $$;
 
 -- ========== 5. RBU: el bono sale de la cuenta de origen configurada (con IBAN) ==========
 create or replace function plone27_rbu_source() returns uuid language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare acc uuid; begin
   select nullif(value,'')::uuid into acc from plone27_config where key='cuenta_rbu_origen';
   if acc is null then acc:=plone27_reserve_account(); end if;
   return acc; end $$;
 
 create or replace function plone27_rbu_claim(p_bonus uuid,p_user uuid,p_key text) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare b plone27_rbu_bonuses; tx uuid; src uuid; begin
   select * into b from plone27_rbu_bonuses where id=p_bonus for update;
   if b.id is null or b.owner_user is distinct from p_user then raise exception 'Bono no encontrado'; end if;
@@ -2145,6 +2277,7 @@ declare b plone27_rbu_bonuses; tx uuid; src uuid; begin
 
 -- ========== 6. NÓMINAS: cotizaciones a su propia cuenta recaudadora; SMI mensual de 160 Pz ==========
 create or replace function plone27_contract_guard() returns trigger language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare smi numeric; ek text; wk text; begin
   select kind into ek from plone27_accounts where id=new.employer_account and bank_id=new.bank_id;
   select kind into wk from plone27_accounts where id=new.worker_account and bank_id=new.bank_id;
@@ -2155,6 +2288,7 @@ declare smi numeric; ek text; wk text; begin
   return new; end $$;
 
 create or replace function plone27_payroll_run(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare c record; v_wt uuid; v_we uuid; v_ir uuid; col_t uuid; col_e uuid; col_irp uuid; wc numeric; ec numeric; ir numeric; lines jsonb; tx uuid; ok int:=0; ko int:=0; begin
   select collector_account into col_t from plone27_tax_rules where code='COT_TRA';
   select collector_account into col_e from plone27_tax_rules where code='COT_EMP';
@@ -2185,6 +2319,7 @@ end $$;
 
 -- ========== 7. EJECUCIÓN DIARIA: añade el escaneo de IVA ==========
 create or replace function plone27_finanzas_daily(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r jsonb:='{}'::jsonb; begin
   begin r:=r||jsonb_build_object('rbu_caducados',plone27_rbu_expire(p_actor)); exception when others then perform plone27_log_step('rbu_caducados',sqlerrm); end;
   begin r:=r||jsonb_build_object('rbu_emitidos',plone27_rbu_issue_week(date_trunc('week',current_date)::date,p_actor)); exception when others then perform plone27_log_step('rbu_emitidos',sqlerrm); end;
@@ -2231,11 +2366,11 @@ on conflict(key) do nothing;
 
 -- ========== 2. RESTRICCIONES AMPLIADAS ==========
 alter table plone27_sales drop constraint if exists plone27_sales_origin_check;
-do $$ begin alter table plone27_sales add constraint plone27_sales_origin_check check(origin in('plataforma','regularizada','presunta')); exception when duplicate_object then null; end $$;
+do $$ begin alter table plone27_sales add constraint plone27_sales_origin_check check(origin in('plataforma','regularizada','presunta')) not valid; exception when duplicate_object then null; end $$;
 alter table plone27_iva_findings drop constraint if exists plone27_iva_findings_status_check;
-do $$ begin alter table plone27_iva_findings add constraint plone27_iva_findings_status_check check(status in('abierto','presumido','regularizado','descartado')); exception when duplicate_object then null; end $$;
+do $$ begin alter table plone27_iva_findings add constraint plone27_iva_findings_status_check check(status in('abierto','presumido','regularizado','descartado')) not valid; exception when duplicate_object then null; end $$;
 alter table plone27_tax_certificates drop constraint if exists plone27_tax_certificates_kind_check;
-do $$ begin alter table plone27_tax_certificates add constraint plone27_tax_certificates_kind_check check(kind in('recibo','regularizacion','recargo','rectificacion','cierre')); exception when duplicate_object then null; end $$;
+do $$ begin alter table plone27_tax_certificates add constraint plone27_tax_certificates_kind_check check(kind in('recibo','regularizacion','recargo','rectificacion','cierre')) not valid; exception when duplicate_object then null; end $$;
 
 -- ========== 3. TABLAS NUEVAS ==========
 create table if not exists plone27_periodos(
@@ -2279,6 +2414,7 @@ create table if not exists plone27_metricas(
 -- ========== 4. BASES DE CADA IMPUESTO (criterio fijado en la normativa, sobre el libro) ==========
 create or replace function plone27_base_impuesto(p_acc uuid,p_impuesto text,p_desde timestamptz,p_hasta timestamptz) returns numeric
 language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare r numeric:=0; begin
   if p_impuesto='IRM' then
     select coalesce(sum(e.amount),0) into r from plone27_ledger_entries e join plone27_transactions t on t.id=e.transaction_id
@@ -2311,6 +2447,7 @@ end $$;
 -- ========== 5. VENTAS: el IVA ya no se cobra venta a venta; lo liquida el cierre mensual ==========
 create or replace function plone27_sale(p_key text,p_buyer uuid,p_seller uuid,p_base numeric,p_actor uuid) returns uuid
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare vid uuid; iva numeric:=0; tx uuid; begin
   if p_base<=0 then raise exception 'Base de venta no válida'; end if;
   vid:=plone27_active_version('IVA',current_date);
@@ -2322,7 +2459,8 @@ declare vid uuid; iva numeric:=0; tx uuid; begin
   insert into plone27_sales(tx,seller_account,buyer_account,base,iva,origin) values(tx,p_seller,p_buyer,p_base,iva,'plataforma');
   return tx; end $$;
 
-create or replace function plone27_iva_propose(p_finding uuid,p_accion text,p_motivo text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_iva_propose(p_finding uuid,p_accion text,p_motivo text,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if p_accion not in('regularizar','descartar') then raise exception 'Acción no válida'; end if;
   if coalesce(length(p_motivo),0)<10 then raise exception 'Motivo obligatorio (mín. 10 caracteres)'; end if;
   update plone27_iva_findings set propuesta_accion=p_accion,motivo=p_motivo,propuesto_por=p_actor
@@ -2333,6 +2471,7 @@ end $$;
 
 -- Aprobación: regularizar registra la venta (se liquida en el cierre del mes); descartar un hallazgo presumido crea un ajuste para el siguiente cierre.
 create or replace function plone27_iva_approve(p_finding uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare f plone27_iva_findings; bs numeric; ivs numeric; begin
   select * into f from plone27_iva_findings where id=p_finding for update;
   if f.id is null or f.status not in('abierto','presumido') then raise exception 'Hallazgo no abierto ni presumido'; end if;
@@ -2358,6 +2497,7 @@ declare f plone27_iva_findings; bs numeric; ivs numeric; begin
 -- ========== 6. REGISTRO DE UNA DECLARACIÓN DEL CIERRE (criterio de retención incluido) ==========
 create or replace function plone27_cierre_registrar(p_per uuid,p_ini date,p_fin date,p_acc uuid,p_impuesto text,p_base numeric,p_fuente text,p_actor uuid) returns text
 language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare vid uuid; imp numeric; prev numeric; ret boolean:=false; motivo text; estado text; rid uuid; carry numeric:=0; k text; tipo text;
   due date:=p_fin+(plone27_setting('default_receipt_due_days')#>>'{}')::int;
   umbral numeric:=(plone27_setting('cierre_umbral_retencion')#>>'{}')::numeric;
@@ -2392,6 +2532,7 @@ end $$;
 
 -- Aprobar una declaración retenida: emite su recibo. Lo hace una persona con rol aprobador.
 create or replace function plone27_declaracion_aprobar(p_decl uuid,p_actor uuid) returns uuid language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare d plone27_declaraciones; tipo text; rid uuid; k text; due date:=current_date+(plone27_setting('default_receipt_due_days')#>>'{}')::int; begin
   select * into d from plone27_declaraciones where id=p_decl for update;
   if d.id is null or d.estado<>'retenida' then raise exception 'La declaración no está retenida'; end if;
@@ -2405,6 +2546,7 @@ declare d plone27_declaraciones; tipo text; rid uuid; k text; due date:=current_
 
 -- ========== 7. CIERRE MENSUAL ==========
 create or replace function plone27_cierre_mensual(p_periodo date,p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare ini date:=date_trunc('month',p_periodo)::date; fin date:=(date_trunc('month',p_periodo)+interval '1 month')::date;
   per plone27_periodos; f record; a record; ac record; bs numeric; ivs numeric; dev numeric; sop numeric; carry numeric; net numeric;
   estado text; presum int:=0; tot numeric; n int; cnt_e int; cnt_r int; cnt_s int; hash text; cert uuid; begin
@@ -2470,6 +2612,7 @@ end $$;
 
 -- ========== 8. PAGADOR DE IMPUESTOS JUNIOR CONFIGURABLE (Capitalia, o la cuenta que se designe) ==========
 create or replace function plone27_junior_tax_payer() returns uuid language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
 declare acc uuid; begin
   select nullif(value,'')::uuid into acc from plone27_config where key='pagador_impuestos_junior';
   if acc is not null then return acc; end if;
@@ -2482,7 +2625,8 @@ declare acc uuid; begin
   end if;
   return acc; end $$;
 
-create or replace function plone27_config_set(p_key text,p_account uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$ begin
+create or replace function plone27_config_set(p_key text,p_account uuid,p_actor uuid) returns void language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column begin
   if p_key not in('cuenta_tributos','cuenta_rbu_origen','pagador_impuestos_junior') then raise exception 'Clave no permitida: %',p_key; end if;
   if not plone27_es_institucional(p_account) then raise exception 'La cuenta debe ser institucional'; end if;
   insert into plone27_config(key,value) values(p_key,p_account::text) on conflict(key) do update set value=excluded.value;
@@ -2491,6 +2635,7 @@ end $$;
 
 -- ========== 9. ESTADÍSTICAS (una fila por fecha, área, métrica y dimensión) ==========
 create or replace function plone27_estadisticas_dia(p_fecha date,p_actor uuid) returns int language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare ini timestamptz:=p_fecha::timestamptz; fin timestamptz:=(p_fecha+1)::timestamptz; n int; begin
   insert into plone27_metricas(fecha,area,metrica,dimension,valor)
     select p_fecha,'transacciones','numero',t.kind,count(*) from plone27_transactions t where t.created_at>=ini and t.created_at<fin group by t.kind
@@ -2545,18 +2690,21 @@ declare ini timestamptz:=p_fecha::timestamptz; fin timestamptz:=(p_fecha+1)::tim
   return n; end $$;
 
 -- ========== 10. VISTAS DE ANÁLISIS (planas, para cualquier cruce) ==========
-create or replace view plone27_v_movimientos with(security_invoker=true) as
+drop view if exists plone27_v_movimientos cascade;
+create view plone27_v_movimientos with(security_invoker=true) as
   select e.id,e.created_at,t.id tx_id,t.kind,t.status,t.memo,e.direction,e.amount,
          a.id account_id,a.iban,a.name account_name,a.kind account_kind,a.owner_user,b.code bank_code,b.name bank_name
   from plone27_ledger_entries e join plone27_transactions t on t.id=e.transaction_id
   join plone27_accounts a on a.id=e.account_id left join plone27_banks b on b.id=a.bank_id;
 
-create or replace view plone27_v_declaraciones with(security_invoker=true) as
+drop view if exists plone27_v_declaraciones cascade;
+create view plone27_v_declaraciones with(security_invoker=true) as
   select d.id,p.periodo,a.iban,a.name account_name,a.kind account_kind,d.impuesto,d.base,d.importe,d.estado,d.fuente,
          d.motivo_retencion,d.saldo_arrastre,d.receipt_id,d.aprobado_por,d.aprobado_at
   from plone27_declaraciones d join plone27_periodos p on p.id=d.periodo_id join plone27_accounts a on a.id=d.account_id;
 
-create or replace view plone27_v_recibos with(security_invoker=true) as
+drop view if exists plone27_v_recibos cascade;
+create view plone27_v_recibos with(security_invoker=true) as
   select r.id,r.ref,r.created_at,ru.code impuesto,a.iban,a.kind account_kind,r.base,r.amount,r.paid_amount,r.status,r.due_date,
          r.obligor_account,r.operation_ref
   from plone27_tax_receipts r join plone27_tax_rule_versions v on v.id=r.rule_version_id
@@ -2564,6 +2712,7 @@ create or replace view plone27_v_recibos with(security_invoker=true) as
 
 -- ========== 11. EJECUCIÓN DIARIA: cierre mensual y estadísticas de ayer ==========
 create or replace function plone27_finanzas_daily(p_actor uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
 declare r jsonb:='{}'::jsonb; begin
   begin r:=r||jsonb_build_object('rbu_caducados',plone27_rbu_expire(p_actor)); exception when others then perform plone27_log_step('rbu_caducados',sqlerrm); end;
   begin r:=r||jsonb_build_object('rbu_emitidos',plone27_rbu_issue_week(date_trunc('week',current_date)::date,p_actor)); exception when others then perform plone27_log_step('rbu_emitidos',sqlerrm); end;
@@ -2604,6 +2753,125 @@ do $$ declare t text; f text; v text; begin
     where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
     execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
 end $$;
+
+-- ==================== MIGRACIÓN (0015_plone27_previsiones.sql) ====================
+-- Placeta One · 0015 · Previsión de movimientos programados e indicadores del panel. Requiere 0014. Idempotente.
+
+-- Previsión: todo lo que va a ocurrir en un rango de fechas, con si la cuenta puede pagarlo.
+create or replace function plone27_previsiones(p_desde date,p_hasta date) returns table(
+  fecha date, tipo text, referencia text, cuenta uuid, iban text, nombre text, importe numeric, estado text, detalle text)
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  return query
+  select u.* from (
+    -- Impuestos: recibos pendientes (vencidos o con vencimiento en el rango)
+    select r.due_date, 'Impuesto'::text, (ru.code||' · '||coalesce(r.ref,'sin referencia'))::text, r.account_id, a.iban, a.name,
+           (r.amount-r.paid_amount)::numeric,
+           (case when r.due_date<current_date then 'vencido'
+                 when plone27_collectable(r.account_id,r.amount-r.paid_amount) then 'cobrable' else 'sin fondos' end)::text,
+           ('Vence el '||r.due_date::text)::text
+    from plone27_tax_receipts r join plone27_tax_rule_versions v on v.id=r.rule_version_id
+      join plone27_tax_rules ru on ru.id=v.rule_id join plone27_accounts a on a.id=r.account_id
+    where r.status in('issued','partial') and r.amount-r.paid_amount>0 and r.due_date between p_desde and p_hasta
+    union all
+    -- Cuotas de planes a plazos
+    select i.due_date, 'Cuota'::text, ('Plan '||left(p.id::text,8)||' · cuota '||i.seq)::text, p.debtor_account, a.iban, a.name,
+           (i.principal_part+i.interest_part)::numeric,
+           (case when i.due_date<current_date then 'vencido'
+                 when plone27_collectable(p.debtor_account,i.principal_part+i.interest_part) then 'cobrable' else 'sin fondos' end)::text,
+           ('Capital '||i.principal_part::text||' · interés '||i.interest_part::text)::text
+    from plone27_plan_items i join plone27_plans p on p.id=i.plan_id join plone27_accounts a on a.id=p.debtor_account
+    where i.status='pending' and p.status in('active','past_due') and i.due_date between p_desde and p_hasta
+    union all
+    -- Suscripciones: próximo cobro
+    select p.next_due, 'Suscripción'::text, ('Suscripción '||left(p.id::text,8))::text, p.debtor_account, a.iban, a.name, p.principal::numeric,
+           (case when plone27_collectable(p.debtor_account,p.principal) then 'cobrable' else 'sin fondos' end)::text,
+           'Cobro periódico al beneficiario'::text
+    from plone27_plans p join plone27_accounts a on a.id=p.debtor_account
+    where p.kind='subscription' and p.status in('active','past_due') and p.next_due between p_desde and p_hasta
+    union all
+    -- Nóminas: bruto más cotización de empresa, desde la cuenta empleadora
+    select c.next_pay, 'Nómina'::text, ('Contrato '||left(c.id::text,8))::text, c.employer_account, a.iban, a.name,
+           (c.gross_monthly+coalesce(plone27_tax_calc(plone27_active_version('COT_EMP',c.next_pay),c.gross_monthly),0))::numeric,
+           (case when plone27_collectable(c.employer_account,c.gross_monthly+coalesce(plone27_tax_calc(plone27_active_version('COT_EMP',c.next_pay),c.gross_monthly),0))
+                 then 'cobrable' else 'sin fondos' end)::text,
+           'Bruto más cotización de empresa'::text
+    from plone27_contracts c join plone27_accounts a on a.id=c.employer_account
+    where c.status='active' and c.next_pay between p_desde and p_hasta
+    union all
+    -- Transferencias programadas, con sus repeticiones dentro del rango (hasta 240)
+    select (s.run_at+k.n*coalesce(s.recurrence,interval '0'))::date, 'Transferencia programada'::text, coalesce(s.memo,'Programada')::text,
+           s.from_account, a.iban, a.name, s.amount::numeric,
+           (case when plone27_collectable(s.from_account,s.amount) then 'cobrable' else 'sin fondos' end)::text,
+           (case when s.recurrence is null then 'Única' else 'Recurrente' end)::text
+    from plone27_scheduled s join plone27_accounts a on a.id=s.from_account
+      cross join lateral generate_series(0, case when s.recurrence is null then 0 else 240 end) k(n)
+    where s.status='active' and (s.run_at+k.n*coalesce(s.recurrence,interval '0'))::date between p_desde and p_hasta
+    union all
+    -- Cierres mensuales (el del mes en curso y el siguiente)
+    select x.f, 'Cierre mensual'::text, ('Cierre de '||to_char(x.m-interval '1 month','YYYY-MM'))::text, null::uuid, null::text, null::text, null::numeric,
+           (case when exists(select 1 from plone27_periodos pp where pp.periodo=(x.m-interval '1 month')::date and pp.estado='cerrado')
+                 then 'cerrado' else 'programado' end)::text,
+           'Liquida el IVA y los impuestos periódicos del mes anterior'::text
+    from (select make_date(extract(year from ms.m)::int, extract(month from ms.m)::int,
+                 (plone27_setting('dia_cierre')#>>'{}')::int) f, ms.m
+          from (select date_trunc('month',current_date) m union all select date_trunc('month',current_date)+interval '1 month') ms) x
+    where x.f between p_desde and p_hasta
+    union all
+    -- IAEP: cuota fija de cada actividad, emitida el día 1 de cada mes
+    select (date_trunc('month',current_date)+interval '1 month')::date, 'IAEP mensual'::text,
+           ('Actividades activas: '||count(*))::text, null::uuid, null::text, null::text, coalesce(sum(v.rate),0)::numeric,
+           'estimado'::text, 'Cuota fija por categoría'::text
+    from plone27_activities a join plone27_tax_rules ru on ru.code='IAEP'
+      join plone27_tax_rule_versions v on v.rule_id=ru.id and v.scope_op=a.category and v.status='published'
+    where a.status='active' and (date_trunc('month',current_date)+interval '1 month')::date between p_desde and p_hasta
+    having count(*)>0
+    union all
+    -- Deudas reconocidas (incluidos intereses de demora y recargos)
+    select d.due_date, 'Deuda'::text, coalesce(d.reason,'Deuda')::text, d.account_id, a.iban, a.name,
+           (d.principal+d.authorized_charges-d.paid)::numeric,
+           (case when d.due_date<current_date then 'vencido'
+                 when plone27_collectable(d.account_id,d.principal+d.authorized_charges-d.paid) then 'cobrable' else 'sin fondos' end)::text,
+           'Deuda reconocida'::text
+    from plone27_debts d join plone27_accounts a on a.id=d.account_id
+    where not d.disputed and d.paid<d.principal+d.authorized_charges and d.due_date between p_desde and p_hasta
+    union all
+    -- RBU sin reclamar: caduca en esa fecha
+    select b.expires_on, 'RBU sin reclamar'::text, ('Bono semana '||b.week_start::text)::text, b.wallet_account, a.iban, a.name, b.amount::numeric,
+           'disponible'::text, 'Si no se reclama, caduca'::text
+    from plone27_rbu_bonuses b join plone27_accounts a on a.id=b.wallet_account
+    where b.status='available' and b.expires_on between p_desde and p_hasta
+    union all
+    -- IVA estimado del mes en curso: base devengada por el tipo general (sin deducir compras)
+    select (date_trunc('month',current_date)+interval '1 month -1 day')::date, 'IVA estimado'::text, 'Mes en curso'::text,
+           null::uuid, null::text, null::text,
+           round(coalesce((select sum(s.base) from plone27_sales s where s.created_at>=date_trunc('month',current_date)
+                           and s.created_at<date_trunc('month',current_date)+interval '1 month'),0)
+                 *coalesce((select v.rate from plone27_tax_rule_versions v join plone27_tax_rules ru on ru.id=v.rule_id
+                            where ru.code='IVA' and v.status='published' and v.scope_op is null order by v.valid_from desc limit 1),0)/100,2)::numeric,
+           'estimado'::text, 'Base devengada del mes × tipo general, sin deducir compras'::text
+    where (date_trunc('month',current_date)+interval '1 month -1 day')::date between p_desde and p_hasta
+  ) u order by u.fecha, u.tipo;
+end $$;
+
+-- Indicadores para el panel principal
+create or replace function plone27_kpis() returns jsonb language sql stable security definer set search_path=public as $$
+  select jsonb_build_object(
+    'recibos_pendientes',(select count(*) from plone27_tax_receipts where status in('issued','partial')),
+    'recibos_pendientes_importe',(select coalesce(sum(amount-paid_amount),0) from plone27_tax_receipts where status in('issued','partial')),
+    'recibos_vencidos',(select count(*) from plone27_tax_receipts where status in('issued','partial') and due_date<current_date),
+    'cuentas_activas',(select count(*) from plone27_accounts where status='active'),
+    'planes_activos',(select count(*) from plone27_plans where status in('active','past_due')),
+    'cuotas_pendientes_importe',(select coalesce(sum(principal_part+interest_part),0) from plone27_plan_items where status='pending'),
+    'contratos_activos',(select count(*) from plone27_contracts where status='active'),
+    'rbu_disponible',(select coalesce(sum(amount),0) from plone27_rbu_bonuses where status='available'),
+    'hallazgos_iva_abiertos',(select count(*) from plone27_iva_findings where status in('abierto','presumido')),
+    'declaraciones_retenidas',(select count(*) from plone27_declaraciones where estado='retenida'),
+    'incidencias_abiertas',(select count(*) from plone27_incidents where status='open'),
+    'certificacion',(plone27_certification_report()->>'estado'),
+    'ultimo_cierre',(select max(periodo) from plone27_periodos where estado='cerrado'))
+$$;
 
 -- ==================== DATOS DE LA NORMA Y CUENTAS (0011_seed_norma_tributos_2027.sql) ====================
 -- Placeta One · seed 0011 · Norma de tributos (Código Normativo | Tributos, Junta 26/09/2026)
@@ -2772,7 +3040,8 @@ do $$ begin
 end $$;
 
 -- Vista de preparación: qué está listo, qué falta y quién debe actuar.
-create or replace view plone27_listo as
+drop view if exists plone27_listo cascade;
+create view plone27_listo as
 select 1 orden,'Estructura' area,'Entidad reservada 0000' comprobacion,
   case when exists(select 1 from plone27_banks where code='0000') then 'OK' else 'FALTA' end estado,
   'Creada por la migración 0003' accion
