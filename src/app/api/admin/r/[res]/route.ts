@@ -70,7 +70,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (scoped(s, c)) return J("Solo personal global", 403);
   if (s.bank) { if (name === "banks") return J("Solo personal global crea entidades", 403); if (c.create.includes("bank_id")) f.bank_id = s.bank; }
   if (badScopes(f.scopes)) return J("Scope desconocido");
-  let secret: string | undefined, row: unknown;
+  let secret: string | undefined, row: unknown; let signingOnce: string | undefined;
   if (name === "banks") {
     const { data, error } = await s.db.rpc("plone27_open_bank", { p_name: f.name, p_actor: s.id }); if (error) return J(error.message, 422);
     if (f.description) await s.db.from(c.table).update({ description: f.description }).eq("id", data.id); row = data;
@@ -84,7 +84,7 @@ export async function POST(req: Request, { params }: Ctx) {
     const { data, error } = await s.db.rpc("plone27_open_account", { p_bank: f.bank_id, p_kind: f.kind, p_name: f.name, p_owner: null, p_actor: s.id }); if (error) return J(error.message, 422); row = data;
   } else {
     if (name === "webhooks") { secret = randomBytes(24).toString("hex"); f.secret = secret; }
-    if (name === "clients") { secret = "plk_" + randomBytes(24).toString("hex"); f.key_hash = hashKey(secret); if (!f.scopes) f.scopes = ["accounts:read", "transfers:write"]; }
+    if (name === "clients") { secret = "plk_" + randomBytes(24).toString("hex"); f.key_hash = hashKey(secret); f.signing_secret = randomBytes(32).toString("hex"); signingOnce = f.signing_secret as string; if (!f.scopes) f.scopes = ["accounts:read", "transfers:write"]; }
     if (["fees", "distribution"].includes(name)) f.approved_by = s.id;
     if (name === "products") f.created_by = s.id;
     if (f.kind === "account_junior") f.requires_guardian = true;
@@ -95,10 +95,10 @@ export async function POST(req: Request, { params }: Ctx) {
     if (name === "taxversions") { const m = await s.db.from(c.table).select("version").eq("rule_id", f.rule_id as string).order("version", { ascending: false }).limit(1); f.version = ((m.data?.[0]?.version as number) ?? 0) + 1; f.author = s.id; if (!f.reason) f.reason = "alta"; }
     const q = name === "staff" ? s.db.from(c.table).upsert(f) : s.db.from(c.table).insert(f);
     const { data, error } = await q.select().single(); if (error) return J(error.message, 422);
-    row = data; if (name === "clients" && data) delete (data as Record<string, unknown>).key_hash;
+    row = data; if (name === "clients" && data) delete (data as Record<string, unknown>).key_hash; delete (data as Record<string, unknown>).signing_secret;
   }
-  await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "admin_create", entity: name, detail: { ...f, key_hash: undefined, secret: undefined } });
-  return Response.json({ row, secret });
+  await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "admin_create", entity: name, detail: { ...f, key_hash: undefined, secret: undefined, signing_secret: undefined } });
+  return Response.json({ row, secret, signing_secret: signingOnce });
 }
 export async function DELETE(req: Request, { params }: Ctx) {
   const name = (await params).res; if (name !== "members") return J("No permitido", 405);
