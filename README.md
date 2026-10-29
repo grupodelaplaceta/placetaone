@@ -9,3 +9,4 @@
 8. Migraciones 0001–0005. `CRON_SECRET` en Vercel para `/api/cron/webhooks` (cron diario; en plan Pro puedes cambiarlo a cada minuto en `vercel.json`). Panel: `/admin`. CI: `.github/workflows/ci.yml`.
 9. Consola `/admin/console`, avisos `/api/cron/alerts`, pruebas `supabase/tests/{concurrency,restore}.sh`, despliegue por entornos en `docs/ENTORNOS.md`.
 10. Configuración central en `/admin/settings` (migración 0006). Rotación de claves: `POST /api/admin/clients/{id}/rotate`.
+11. Migración 0007 (productos financieros). Panel completo en /admin: Productos, Operaciones, Financiación, Fiscalidad, Registros.

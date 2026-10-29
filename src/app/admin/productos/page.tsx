@@ -1,0 +1,18 @@
+"use client";
+import { Resource, Action } from "../Resource";
+const KINDS = ["account_personal", "account_business", "account_shared", "account_junior", "card_digital", "card_physical", "card_credit", "internal_credit", "service"];
+const st = (from: string, to: string, l: string): Action => ({ l, body: r => (r.status === from ? { status: to } : null) });
+const A = { ref: "accounts", lab: ["iban", "name"] };
+export default function Productos() {
+  return (<><h1>Productos financieros</h1>
+    <Resource res="products" title="Catálogo de productos" cols={[{ k: "code", l: "Código" }, { k: "name", l: "Nombre" }, { k: "kind", l: "Tipo" }, { k: "status", l: "Estado" }, { k: "daily_limit", l: "Límite diario" }, { k: "monthly_fee", l: "Cuota/mes" }, { k: "interest_rate", l: "Interés %" }, { k: "valid_from", l: "Desde" }, { k: "valid_to", l: "Hasta" }]}
+      create={[{ k: "code", l: "Código" }, { k: "bank_id", l: "Entidad", ref: "banks", lab: ["code", "name"] }, { k: "kind", l: "Tipo", t: "select", o: KINDS }, { k: "name", l: "Nombre" }, { k: "description", l: "Descripción" }, { k: "daily_limit", l: "Límite diario", t: "number" }, { k: "credit_limit", l: "Límite de crédito", t: "number" },
+        { k: "monthly_fee", l: "Cuota mensual", t: "number" }, { k: "fee_account", l: "Cuenta que cobra la cuota", ...A }, { k: "interest_rate", l: "Interés %", t: "number" }, { k: "min_age", l: "Edad mínima", t: "number" }, { k: "requires_guardian", l: "Exige tutor", t: "bool" }, { k: "valid_from", l: "Desde", t: "date" }, { k: "valid_to", l: "Hasta", t: "date" }]}
+      actions={[st("draft", "active", "Aprobar y activar"), st("active", "retired", "Retirar"), st("draft", "retired", "Descartar")]} />
+    <Resource res="carddesigns" title="Diseños de tarjeta" cols={[{ k: "name", l: "Nombre" }, { k: "tier", l: "Nivel" }, { k: "price", l: "Precio" }, { k: "license_fee", l: "Licencia" }, { k: "status", l: "Estado" }]}
+      create={[{ k: "name", l: "Nombre" }, { k: "tier", l: "Nivel", t: "select", o: ["free", "premium", "commissioned", "limited"] }, { k: "price", l: "Precio Pz", t: "number" }, { k: "license_fee", l: "Licencia Pz", t: "number" }, { k: "revenue_account", l: "Cuenta de ingresos", ...A }]}
+      actions={[st("draft", "submitted", "Enviar"), st("submitted", "review", "A revisión"), st("review", "approved", "Aprobar"), st("review", "rejected", "Rechazar"), st("rejected", "draft", "Reabrir")]} />
+    <Resource res="cards" title="Tarjetas" cols={[{ k: "card_ref", l: "Referencia" }, { k: "kind", l: "Tipo" }, { k: "status", l: "Estado" }, { k: "last4", l: "Últimos 4" }, { k: "is_test", l: "Prueba" }, { k: "expires", l: "Caduca" }, { k: "credit_limit", l: "Crédito" }]}
+      create={[{ k: "account_id", l: "Cuenta", ...A }, { k: "kind", l: "Tipo", t: "select", o: ["digital", "physical", "credit"] }, { k: "credit_limit", l: "Límite crédito", t: "number" }, { k: "is_test", l: "Tarjeta de prueba", t: "bool" }]}
+      actions={[st("active", "suspended", "Suspender"), st("active", "blocked", "Bloquear"), st("suspended", "active", "Reactivar"), st("blocked", "active", "Desbloquear"), { l: "Cancelar", body: r => r.status !== "closed" ? { status: "closed" } : null }]} /></>);
+}

@@ -84,3 +84,36 @@ do $$ declare bk uuid; s uuid; col uuid; pa uuid; ru uuid; v1 uuid; v2 uuid; rc 
  perform plone27_setting_propose('unpaid_negative_adjustment_policy','"credit_note"',null,'permitir nota de crédito',me); ch:=(select id from plone27_setting_changes where key='unpaid_negative_adjustment_policy' and status='pending');
  perform plone27_setting_approve(ch,true,ot); perform plone27_adjust_execute(adj,me); assert (select amount from plone27_tax_receipts where id=rc)=5,'nota de crédito aplicada';
  raise notice 'CONFIG OK'; end $$;
+do $$ declare bk uuid; s uuid; pr uuid; a jsonb; n int; begin
+ select id into bk from plone27_banks where code='0001'; select id into s from plone27_accounts where name='Tesoreria';
+ insert into plone27_products(code,bank_id,kind,name,daily_limit,monthly_fee,fee_account) values('CTA-BASE',bk,'account_personal','Cuenta Base',100,2,s) returning id into pr;
+ begin perform plone27_open_account_p(pr,'X',null,null); assert false; exception when others then assert sqlerrm like 'Producto no disponible%',sqlerrm; end;
+ begin update plone27_products set status='active' where id=pr; assert false; exception when others then assert sqlerrm like 'Activar un producto%',sqlerrm; end;
+ update plone27_products set status='active',approved_by=gen_random_uuid() where id=pr;
+ a:=plone27_open_account_p(pr,'Cliente P',null,null); assert (select daily_limit from plone27_accounts where id=(a->>'id')::uuid)=100 and (select product_id from plone27_accounts where id=(a->>'id')::uuid)=pr,'cuenta hereda producto';
+ perform plone27_transfer('fund-p',s,(a->>'id')::uuid,50,'',null); n:=plone27_charge_product_fees(null); assert n>=1; perform plone27_charge_product_fees(null);
+ assert (select count(*) from plone27_transactions where idempotency_key like 'pfee:'||(a->>'id')||'%')=1,'cuota mensual idempotente';
+ raise notice 'PRODUCTOS OK'; end $$;
+do $$ declare bk uuid; s uuid; a uuid; b uuid; c uuid; u uuid:=gen_random_uuid(); r uuid; t uuid; pr uuid; ru uuid; v uuid; rc uuid; tp uuid; begin
+ select id into bk from plone27_banks where code='0001'; select id into s from plone27_accounts where name='Tesoreria';
+ a:=(plone27_open_account(bk,'personal','M-A',null,null)->>'id')::uuid; b:=(plone27_open_account(bk,'personal','M-B',null,null)->>'id')::uuid; perform plone27_transfer('m0',s,a,100,'',null);
+ perform plone27_transfer('mk',a,b,10,'',null);
+ begin perform plone27_transfer('mk',a,b,99,'',null); assert false; exception when others then assert sqlerrm like 'Idempotency-Key reutilizada%',sqlerrm; end;
+ begin perform plone27_transfer_user('mu',u,a,b,5,'',null); assert false; exception when others then assert sqlerrm like 'El usuario no está autorizado%',sqlerrm; end;
+ insert into plone27_account_members values(a,u,'authorized'); perform plone27_transfer_user('mu',u,a,b,5,'',null);
+ r:=plone27_reserve(a,80,'t',null); begin perform plone27_transfer('mr',a,b,20,'',null); assert false; exception when others then assert sqlerrm like 'Saldo%',sqlerrm; end;
+ perform plone27_release(r,null); perform plone27_transfer('mr',a,b,20,'',null);
+ t:=(select id from plone27_transactions where idempotency_key='mk'); perform plone27_reverse('mrev',t,'x',null);
+ begin perform plone27_reverse('mrev2',(select id from plone27_transactions where idempotency_key='mrev'),'x',null); assert false; exception when others then assert sqlerrm like 'No se puede revertir%',sqlerrm; end;
+ begin delete from plone27_audit_log; assert false; exception when others then assert sqlerrm like 'Registro contable%',sqlerrm; end;
+ insert into plone27_products(code,bank_id,kind,name,credit_limit,interest_rate,fee_account,status,approved_by) values('CRD',bk,'internal_credit','Crédito',100,12,s,'active',gen_random_uuid()) returning id into pr;
+ c:=(plone27_open_account_p(pr,'Cred',null,null)->>'id')::uuid; perform plone27_transfer('c1',c,b,60,'',null);
+ assert (select booked from plone27_account_balances where account_id=c)=-60,'descubierto';
+ begin perform plone27_transfer('c2',c,b,50,'',null); assert false; exception when others then assert sqlerrm like 'Límite de crédito%',sqlerrm; end;
+ assert plone27_accrue_interest(null)=1; perform plone27_accrue_interest(null); assert (select booked from plone27_account_balances where account_id=c)=-60.60,'interés mensual una sola vez';
+ insert into plone27_tax_rules(code,name,collector_account) values('IVAT','t',s) returning id into ru;
+ insert into plone27_tax_rule_versions(rule_id,version,method,rate,valid_from,reason,status,approver) values(ru,1,'fixed',10,current_date-1,'t','published',u) returning id into v;
+ insert into plone27_tax_receipts(rule_version_id,account_id,base,amount,due_date) values(v,a,0,10,current_date+5) returning id into rc;
+ tp:=plone27_tax_pay('tp1',rc,null); assert (select status from plone27_tax_receipts where id=rc)='paid' and (select paid_amount from plone27_tax_receipts where id=rc)=10;
+ perform plone27_reverse('trev',tp,'x',null); assert (select status from plone27_tax_receipts where id=rc)='issued','reverso reabre el recibo';
+ raise notice 'MOTOR OK'; end $$;

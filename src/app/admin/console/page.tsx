@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { sb } from "@/lib/browser";
 // Plantillas de cada operación de Administración (el servidor añade p_actor y valida rol)
 const T: Record<string, object> = {
@@ -23,7 +23,8 @@ const T: Record<string, object> = {
   plone27_cash_forecast: { p_days: 30 },
 };
 export default function Console() {
-  const [tok, setTok] = useState(""); const [fn, setFn] = useState("plone27_open_bank"); const [body, setBody] = useState(JSON.stringify(T.plone27_open_bank, null, 2)); const [out, setOut] = useState("");
+  const [tok, setTok] = useState("");
+  useEffect(() => { sb().auth.getSession().then(({ data }) => { if (data.session) { setTok(data.session.access_token); } }); }, []); const [fn, setFn] = useState("plone27_open_bank"); const [body, setBody] = useState(JSON.stringify(T.plone27_open_bank, null, 2)); const [out, setOut] = useState("");
   const login = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const f = new FormData(e.currentTarget);
     const { data, error } = await sb().auth.signInWithPassword({ email: String(f.get("e")), password: String(f.get("p")) }); error ? setOut(error.message) : setTok(data.session!.access_token); };
   const run = async () => {
