@@ -1,0 +1,26 @@
+openapi: 3.0.3
+info: {title: Placeta One API v1, version: "1.1", description: "Importes en Pz. Autenticación por x-api-key (por entidad)."}
+paths:
+  /api/v1/transfers:
+    post:
+      summary: Transferencia entre cuentas (origen de la propia entidad)
+      parameters: [{name: Idempotency-Key, in: header, required: true, schema: {type: string}}]
+      requestBody: {content: {application/json: {schema: {type: object, required: [user_id,from_iban,to_iban,amount], properties: {user_id: {type: string, description: "Usuario final que ordena; debe ser titular, cotitular o autorizado de la cuenta de origen"}, from_iban: {type: string, example: PZ-0027-0148}, to_iban: {type: string}, amount: {type: number, multipleOf: 0.01}, memo: {type: string}}}}}}
+      responses: {"200": {description: "{transfer, operation}"}, "403": {description: Scope o entidad}, "422": {description: Regla de negocio}, "429": {description: Límite de uso}}
+  /api/v1/accounts/{iban}:
+    get:
+      summary: Consulta de cuenta (saldo solo de la propia entidad)
+      parameters: [{name: iban, in: path, required: true, schema: {type: string}}]
+      responses: {"200": {description: OK}, "404": {description: No encontrada}}
+  /api/v1/accounts/{iban}/transactions:
+    get: {summary: "Últimos 50 movimientos (solo cuentas de la propia entidad)", parameters: [{name: iban, in: path, required: true, schema: {type: string}}], responses: {"200": {description: OK}}}
+  /api/v1/accounts/{iban}/receipts:
+    get: {summary: "Recibos fiscales internos de la cuenta", parameters: [{name: iban, in: path, required: true, schema: {type: string}}], responses: {"200": {description: OK}}}
+  /api/v1/products:
+    get: {summary: "Catálogo de productos activos de la entidad (scope products:read)", responses: {"200": {description: OK}}}
+  /api/v1/accounts:
+    post: {summary: "Abre una cuenta desde un producto (scope accounts:write)", requestBody: {content: {application/json: {schema: {type: object, required: [product_id,name], properties: {product_id: {type: string}, name: {type: string}, owner: {type: string}}}}}}, responses: {"200": {description: "{iban}"}}}
+  /api/v1/accounts/{iban}/cards:
+    get: {summary: "Tarjetas de la cuenta (scope cards:read)", parameters: [{name: iban, in: path, required: true, schema: {type: string}}], responses: {"200": {description: OK}}}
+  /api/v1/transfers/{ref}:
+    get: {summary: "Estado de una transferencia PL27-TRF-... (scope transfers:read)", parameters: [{name: ref, in: path, required: true, schema: {type: string}}], responses: {"200": {description: OK}, "404": {description: No encontrada}}}
