@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 const P: [string, string, object, string][] = [
   ["plone27_charge_product_fees", "Cobrar cuotas mensuales de productos", {}, "Cobra una vez al mes a cada cuenta con producto; repetirlo no duplica."],
   ["plone27_accrue_interest", "Devengar intereses del crédito interno", {}, "Interés mensual sobre descubiertos; una sola vez por cuenta y mes."],
+  ["plone27_subscriptions_sweep", "Renovar membresías Junior y marcar vencidas", {}, "Renueva automáticamente las que toca, pasa a «pendiente» las vencidas y a «expirada» las que superan la gracia."],
   ["plone27_run_scheduled", "Ejecutar programadas y recurrentes vencidas", {}, "Ejecuta lo pendiente; los fallos quedan como incidencias."],
   ["plone27_apply_late_penalties", "Aplicar recargos por mora", {}, "Solo actúa si lo habilitas en Configuración y hay norma autorizada."],
   ["plone27_cash_forecast", "Previsión de caja a 30 días", { p_days: 30 }, "Programadas, impuestos por vencer y reembolsos pendientes."],

@@ -7,7 +7,7 @@ type Cfg = { table: string; sel: string; read: string[]; write: string[]; create
 const ALL = ["auditor", "financiero", "fiscal", "financiacion", "gestor_bancario", "aprobador"], BK = ["gestor_bancario", "financiero"];
 const R: Record<string, Cfg> = {
   banks: { table: "plone27_banks", sel: "id,code,name,description,status,valid_from,valid_to", read: ALL, write: BK, create: ["name", "description"], update: ["name", "description", "status", "valid_to"], bank: "id", order: "code" },
-  accounts: { table: "plone27_accounts", sel: "id,iban,name,kind,status,daily_limit,bank_id", read: ALL, write: BK, create: ["bank_id", "name", "kind", "product_id"], update: ["name", "status", "daily_limit"], bank: "bank_id", order: "iban" },
+  accounts: { table: "plone27_accounts", sel: "id,iban,name,kind,status,daily_limit,bank_id,customer_id", read: ALL, write: BK, create: ["bank_id", "name", "kind", "product_id"], update: ["name", "status", "daily_limit"], bank: "bank_id", order: "iban" },
   clients: { table: "plone27_api_clients", sel: "id,name,scopes,rate_limit,active,bank_id,created_at", read: ALL, write: BK, create: ["bank_id", "name", "scopes", "rate_limit"], update: ["name", "scopes", "rate_limit", "active"], bank: "bank_id" },
   webhooks: { table: "plone27_webhooks", sel: "id,url,events,active,bank_id", read: ALL, write: BK, create: ["bank_id", "url", "events"], update: ["url", "events", "active"], bank: "bank_id" },
   fees: { table: "plone27_fee_rules", sel: "id,op_type,method,rate,min_amount,max_amount,payer,valid_from,valid_to,bank_id", read: ALL, write: BK, create: ["bank_id", "op_type", "method", "rate", "min_amount", "max_amount", "payer", "bank_pay_account", "beneficiary_account", "valid_from", "valid_to"], update: ["rate", "payer", "valid_to"], bank: "bank_id" },
@@ -40,6 +40,11 @@ const R: Record<string, Cfg> = {
   members: { table: "plone27_account_members", sel: "account_id,user_id,role", read: ALL, write: BK, create: ["account_id", "user_id", "role"], update: ["role"] },
   juniors: { table: "plone27_juniors", sel: "account_id,birth_date,guardian_user,per_tx_limit", read: ALL, write: BK, create: ["account_id", "birth_date", "guardian_user", "per_tx_limit"], update: ["per_tx_limit", "guardian_user"], pk: "account_id" },
   brackets: { table: "plone27_tax_brackets", sel: "version_id,from_amount,to_amount,rate", read: ALL, write: ["fiscal"], create: ["version_id", "from_amount", "to_amount", "rate"], update: [], shared: true, order: "from_amount" },
+  customers: { table: "plone27_customers", sel: "id,dip,full_name,bank_id,user_id,status", read: ALL, write: BK, create: ["dip", "full_name", "bank_id", "user_id"], update: ["full_name", "user_id", "status"], bank: "bank_id", order: "dip" },
+  policies: { table: "plone27_policies", sel: "id,ref,kind,name,scope,bank_id,customer_id,dip,params,valid_from,valid_to,status", read: ALL, write: ["fiscal", "financiero", "aprobador"], create: ["kind", "name", "bank_id", "customer_id", "dip", "valid_from", "valid_to", "reason", "type", "value", "grace_days", "max_amount", "freeze_collection", "max_days", "requires_approval", "max_principal", "interest_pct", "allow_partial"], update: ["valid_to", "status"], bank: "bank_id", desc: "created_at" },
+  disputes: { table: "plone27_disputes", sel: "id,ref,subject_type,subject_id,reason,status,due_at,opened_at,resolution", read: ALL, write: ["fiscal", "financiero", "aprobador"], update: [], desc: "opened_at" },
+  juniorprofiles: { table: "plone27_junior_profiles", sel: "customer_id,birth_date,guardian_user,per_tx_limit,daily_limit,monthly_limit,card_enabled,locked", read: ALL, write: BK, create: ["customer_id", "birth_date", "guardian_user", "per_tx_limit", "daily_limit", "monthly_limit", "card_enabled"], update: ["per_tx_limit", "daily_limit", "monthly_limit", "card_enabled", "locked", "guardian_user"], pk: "customer_id" },
+  subscriptions: { table: "plone27_subscriptions", sel: "id,account_id,status,period_start,period_end,auto_renew,renewals", read: ALL, write: BK, update: ["auto_renew", "status"], order: "period_end" },
   staff: { table: "plone27_staff", sel: "user_id,role,active,bank_id", read: ["aprobador"], write: [], create: ["user_id", "role", "bank_id"], update: ["role", "active", "bank_id"], pk: "user_id" },
 };
 type Ctx = { params: Promise<{ res: string }> };
@@ -53,7 +58,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const s = await staffFrom(req, c.read); if (!s) return J("No autorizado", 403);
   if (scoped(s, c)) return J("Solo personal global", 403);
   let q = s.db.from(c.table).select(c.sel); const u = new URL(req.url);
-  for (const k of ["bank_id", "rule_id", "batch_id", "grant_id", "program_id", "account_id", "version_id"]) { const v = u.searchParams.get(k); if (v) q = q.eq(k, v); }
+  for (const k of ["bank_id", "rule_id", "batch_id", "grant_id", "program_id", "account_id", "version_id", "kind"]) { const v = u.searchParams.get(k); if (v) q = q.eq(k, v); }
   if (s.bank && c.bank) q = q.eq(c.bank, s.bank);
   const r = c.desc ? await q.order(c.desc, { ascending: false }).limit(300) : c.order ? await q.order(c.order).limit(500) : await q.limit(500);
   return r.error ? J(r.error.message, 500) : Response.json(r.data);
@@ -82,6 +87,9 @@ export async function POST(req: Request, { params }: Ctx) {
     if (name === "clients") { secret = "plk_" + randomBytes(24).toString("hex"); f.key_hash = hashKey(secret); if (!f.scopes) f.scopes = ["accounts:read", "transfers:write"]; }
     if (["fees", "distribution"].includes(name)) f.approved_by = s.id;
     if (name === "products") f.created_by = s.id;
+    if (f.kind === "account_junior") f.requires_guardian = true;
+    if (name === "policies") { const pr: Record<string, unknown> = {}; for (const k of ["type", "value", "grace_days", "max_amount", "freeze_collection", "max_days", "requires_approval", "max_principal", "interest_pct", "allow_partial"]) if (f[k] !== undefined) { pr[k] = f[k]; delete f[k]; }
+      f.params = pr; f.scope = f.customer_id ? "customer" : f.dip ? "dip" : f.bank_id ? "bank" : "global"; f.created_by = s.id; }
     if (name === "debts") { f.authorized_by = s.id; if (!f.reason) f.reason = "alta"; }
     if (name === "exemptions") f.approved_by = s.id;
     if (name === "taxversions") { const m = await s.db.from(c.table).select("version").eq("rule_id", f.rule_id as string).order("version", { ascending: false }).limit(1); f.version = ((m.data?.[0]?.version as number) ?? 0) + 1; f.author = s.id; if (!f.reason) f.reason = "alta"; }
@@ -112,11 +120,16 @@ export async function PATCH(req: Request, { params }: Ctx) {
     batches: b.run ? ["plone27_run_batch", { p_batch: id }] : null,
     justifications: b.reimburse ? ["plone27_reimburse", { p_key: K("ui-reimb"), p_just: id }] : null,
     transactions: b.reverse ? ["plone27_reverse", { p_key: K("ui-rev"), p_tx: id, p_reason: "Reversión desde el panel" }] : null,
-    receipts: b.pay ? ["plone27_tax_pay", { p_key: K("ui-pay"), p_receipt: id }] : null,
+    receipts: b.pay ? ["plone27_tax_pay", { p_key: K("ui-pay"), p_receipt: id }] : b.dispute ? ["plone27_dispute_open", { p_type: "receipt", p_subject: id, p_reason: b.dispute }] : null,
+    subscriptions: b.renew ? ["plone27_subscription_renew", { p_account: b.account, p_user: null }] : null,
+    debts: b.dispute ? ["plone27_dispute_open", { p_type: "debt", p_subject: id, p_reason: b.dispute }] : null,
+    disputes: b.resolve ? ["plone27_dispute_resolve", { p_id: id, p_outcome: b.resolve, p_note: b.note ?? null }] : null,
     approvals: b.approve !== undefined ? ["plone27_approval_decide", { p_id: id, p_approve: b.approve }] : null };
   if (rpc[name]) { const { data, error } = await s.db.rpc(rpc[name]![0], { ...rpc[name]![1], p_actor: s.id }); if (error) return J(error.message, 422); await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "admin_" + rpc[name]![0], entity: name, entity_id: id }); return Response.json({ ok: true, result: data }); } let f: Record<string, unknown> = pick(b, c.update);
   if ((name === "banks" || name === "products") && f.status === "active") f.approved_by = s.id;                       // activar exige aprobación registrada
   if (name === "taxversions" && b.publish) f = { status: "published", approver: s.id, published_at: new Date().toISOString() };
+  if (name === "policies" && b.publish) f = { status: "published", approved_by: s.id };
+  if (name === "accounts" && b.dip) { const cu = await s.db.from("plone27_customers").select("id").eq("dip", String(b.dip).toUpperCase()).maybeSingle(); if (!cu.data) return J("DIP no encontrado"); f = { customer_id: cu.data.id }; }
   if (badScopes(f.scopes)) return J("Scope desconocido");
   if (!Object.keys(f).length) return J("Nada que actualizar");
   let q = s.db.from(c.table).update(f).eq(c.pk ?? "id", id); if (s.bank && c.bank) q = q.eq(c.bank, s.bank);

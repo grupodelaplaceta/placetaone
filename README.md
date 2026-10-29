@@ -10,3 +10,6 @@
 9. Consola `/admin/console`, avisos `/api/cron/alerts`, pruebas `supabase/tests/{concurrency,restore}.sh`, despliegue por entornos en `docs/ENTORNOS.md`.
 10. Configuración central en `/admin/settings` (migración 0006). Rotación de claves: `POST /api/admin/clients/{id}/rotate`.
 11. Migración 0007 (productos financieros). Panel completo en /admin: Productos, Operaciones, Financiación, Fiscalidad, Registros.
+12. Migración 0011 (finanzas automatizadas: cuenta principal, cuotas, suscripciones, mora, nóminas, RBU, autocobro). Después, en staging: `supabase/seeds/0011_seed_norma_tributos_2027.sql` (no va en CI). Publicar tributos con `plone27_tax_publish` por una persona distinta del autor. Cron diario `/api/cron/finanzas`.
+13. Migración 0012 (certificación fiscal, prioridad de la norma T, pagador Junior, IVA de ventas, IAEP mensual, recargos T57). Seed `supabase/seeds/0012_seed_normas_T.sql` después de 0011. Verificar con `plone27_certification_report()`.
+14. Migración 0013 (cuentas con IBAN para tributos y RBU, destinos por impuesto, cuentas institucionales para Junior, IVA de ventas con detección y regularización, certificados rectificativos). Seed `supabase/seeds/0013_seed_cuentas_institucionales.sql` después de 0012. Panel: /admin/infraestructura, /admin/iva, /admin/destinos.

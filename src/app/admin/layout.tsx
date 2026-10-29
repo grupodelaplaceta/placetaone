@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { sb, initSb } from "@/lib/browser";
-const NAV: [string, string][] = [["/admin", "Panel"], ["/admin/bancos", "Bancos"], ["/admin/cuentas", "Cuentas"], ["/admin/productos", "Productos"], ["/admin/operaciones", "Operaciones"], ["/admin/financiacion", "Financiación"], ["/admin/fiscal", "Fiscalidad"], ["/admin/registros", "Registros"], ["/admin/personal", "Personal"], ["/admin/api", "API"], ["/admin/numeracion", "Numeración"], ["/admin/procesos", "Procesos"], ["/admin/settings", "Configuración"], ["/admin/console", "Consola"]];
+import { DialogHost } from "./ui";
+const NAV: [string, string][] = [["/admin", "Panel"], ["/admin/infraestructura", "Infraestructura"], ["/admin/iva", "IVA"], ["/admin/destinos", "Destinos"], ["/admin/estado", "Estado"], ["/admin/bancos", "Bancos"], ["/admin/clientes", "Clientes"], ["/admin/cuentas", "Cuentas"], ["/admin/productos", "Productos"], ["/admin/operaciones", "Operaciones"], ["/admin/financiacion", "Financiación"], ["/admin/normas", "Normas"], ["/admin/disputas", "Disputas"], ["/admin/fiscal", "Fiscalidad"], ["/admin/registros", "Registros"], ["/admin/personal", "Personal"], ["/admin/api", "API"], ["/admin/numeracion", "Numeración"], ["/admin/procesos", "Procesos"], ["/admin/settings", "Configuración"], ["/admin/console", "Consola"]];
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<"load" | "out" | "in" | "err">("load"); const [msg, setMsg] = useState("");
   useEffect(() => { let off = () => {};
@@ -17,5 +18,5 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <form onSubmit={login} style={{ display: "grid", gap: 8 }}><input name="e" type="email" placeholder="Email" required /><input name="p" type="password" placeholder="Contraseña" required /><button>Entrar</button></form></main>);
   return (<div style={{ display: "flex", minHeight: "100vh" }}><nav style={{ width: 190, background: "#1b1b18", padding: 16, display: "grid", alignContent: "start", gap: 10 }}>
     <b style={{ color: "#fff", fontSize: 18 }}>Placeta One</b>{NAV.map(([h, l]) => <Link key={h} href={h} style={{ color: "#ddd", textDecoration: "none" }}>{l}</Link>)}
-    <button onClick={() => sb().auth.signOut()} style={{ marginTop: 24 }}>Salir</button></nav><div style={{ flex: 1, padding: 24, maxWidth: 1100 }}>{children}</div></div>);
+    <button onClick={() => sb().auth.signOut()} style={{ marginTop: 24 }}>Salir</button></nav><div style={{ flex: 1, padding: 24, maxWidth: 1100 }}>{children}<DialogHost /></div></div>);
 }

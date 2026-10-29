@@ -14,5 +14,5 @@ export default function Financiacion() {
       create={[{ k: "name", l: "Nombre" }, { k: "period", l: "Periodo ([2026-01-01,2026-12-31])" }, { k: "approved", l: "Aprobado", t: "number" }, { k: "restricted", l: "Fondo restringido", t: "bool" }]} />
     <Resource res="debts" title="Deuda interna autorizada" cols={[{ k: "ref", l: "Ref" }, { k: "account_id", l: "Deudor" }, { k: "principal", l: "Principal" }, { k: "paid", l: "Pagado" }, { k: "due_date", l: "Vence" }, { k: "disputed", l: "Disputa" }]}
       create={[{ k: "account_id", l: "Deudor", ...A }, { k: "creditor_account", l: "Acreedor", ...A }, { k: "principal", l: "Principal", t: "number" }, { k: "due_date", l: "Vencimiento", t: "date" }, { k: "reason", l: "Origen autorizado" }]}
-      actions={[{ l: "Marcar disputa", body: r => !r.disputed ? { disputed: true } : null }, { l: "Quitar disputa", body: r => r.disputed ? { disputed: false } : null }]} /></>);
+      actions={[{ l: "Abrir disputa…", prompt: "Motivo de la disputa", body: (r, v) => !r.disputed ? { dispute: v } : null }]} /></>);
 }
