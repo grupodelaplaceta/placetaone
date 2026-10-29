@@ -290,7 +290,7 @@ declare c record; prev text:='GENESIS'; h text; total int:=0; rota int:=0; disc 
   end loop;
   select count(*) into fpd from plone27_tax_rule_versions v where v.status='published' and v.fingerprint is distinct from plone27_version_fp(v.id);
   select count(*) into alterados from plone27_tax_receipts r
-    join lateral (select c.amount,c.base from plone27_tax_certificates c where c.subject_id=r.id order by c.seq desc limit 1) u on true
+    join lateral (select k.amount,k.base from plone27_tax_certificates k where k.subject_id=r.id order by k.seq desc limit 1) u on true
     where r.amount<>u.amount or r.base<>u.base;
   select count(*) into sin from plone27_tax_receipts r where not exists(select 1 from plone27_tax_certificates c where c.subject_id=r.id);
   return jsonb_build_object('certificados',total,'cadena_rota',rota,'importes_no_recalculan',disc,'importes_sin_certificado_vigente',alterados,

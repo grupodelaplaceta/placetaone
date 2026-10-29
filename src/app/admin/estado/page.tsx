@@ -9,7 +9,7 @@ const sev = (c: C) => (c.count === 0 ? "#2a7" : c.severity === "critical" ? "#c3
 const box = { background: "#fff", border: "1px solid #ddd", borderRadius: 10, padding: 16, marginBottom: 16 } as const;
 export default function Estado() {
   const [h, setH] = useState<H | null>(null); const [err, setErr] = useState(""); const [sel, setSel] = useState<C | null>(null); const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { setBusy(true); try { setH(await api("/api/admin/health")); setErr(""); } catch (e) { setErr((e as Error).message); } setBusy(false); }, []);
+  const load = useCallback(async () => { setBusy(true); try { { const j = await api("/api/admin/health"); setH({ ...j, apis: j.apis ?? [], config: j.config ?? [], integrity: j.integrity ?? [], security: j.security ?? [], errors: j.errors ?? [] }); }; setErr(""); } catch (e) { setErr((e as Error).message); } setBusy(false); }, []);
   useEffect(() => { load(); }, [load]);
   const bad = h ? [...h.apis, ...h.config].filter(c => !c.ok).length + [...h.integrity, ...h.security].filter(c => (c.count ?? 0) > 0 && c.severity === "critical").length : 0;
   const rows = (list: C[], isData: boolean) => list.map((c, i) => <tr key={i} onClick={() => setSel(c)} style={{ cursor: "pointer" }}><td style={{ padding: 6 }}>{dot(isData ? sev(c) : c.ok ? "#2a7" : "#c33")}{c.name ?? c.check}</td>

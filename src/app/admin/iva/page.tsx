@@ -24,7 +24,7 @@ export default function IVA() {
   const [filtro, setFiltro] = useState("abierto"); const [msg, setMsg] = useState("");
 
   const cargar = useCallback(async () => {
-    try { const j = await api(`/api/admin/iva?desde=${desde}&hasta=${hasta}`); setRows(j.hallazgos); setInforme(j.informe); }
+    try { const j = await api(`/api/admin/iva?desde=${desde}&hasta=${hasta}`); setRows(Array.isArray(j.hallazgos) ? j.hallazgos : []); setInforme(j.informe); }
     catch (e) { setMsg((e as Error).message); }
   }, [desde, hasta]);
   useEffect(() => { cargar(); }, [cargar]);
