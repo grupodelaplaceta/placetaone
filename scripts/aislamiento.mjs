@@ -23,7 +23,7 @@ async function crearSesion(dip, nonce = randomBytes(12).toString("base64url")) {
   const firma = createHmac("sha256", FIRMA).update(`${ts}.${cuerpo}`).digest("hex");
   const r = await fetch(`${BASE}/api/v1/sessions`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-client-key": CLAVE, "x-timestamp": String(ts), "x-nonce": nonce, "x-signature": firma },
+    headers: { "content-type": "application/json", "x-api-key": CLAVE, "x-timestamp": String(ts), "x-nonce": nonce, "x-signature": firma },
     body: cuerpo,
   });
   return { status: r.status, json: await r.json().catch(() => ({})), nonce };
@@ -68,7 +68,7 @@ comprobar("la clave de servidor se rechaza con cabecera de navegador", desdeNave
 
 // Firma incorrecta y nonce repetido
 const ts = Date.now(), cuerpo = JSON.stringify({ dip: DIP_A });
-const firmaMala = await fetch(`${BASE}/api/v1/sessions`, { method: "POST", headers: { "content-type": "application/json", "x-client-key": CLAVE, "x-timestamp": String(ts), "x-nonce": randomBytes(12).toString("base64url"), "x-signature": "0".repeat(64) }, body: cuerpo });
+const firmaMala = await fetch(`${BASE}/api/v1/sessions`, { method: "POST", headers: { "content-type": "application/json", "x-api-key": CLAVE, "x-timestamp": String(ts), "x-nonce": randomBytes(12).toString("base64url"), "x-signature": "0".repeat(64) }, body: cuerpo });
 comprobar("firma incorrecta se rechaza", firmaMala.status === 401);
 const repetido = await crearSesion(DIP_A, sa.nonce);
 comprobar("nonce repetido se rechaza", repetido.status === 409, `estado ${repetido.status}`);
@@ -76,6 +76,12 @@ comprobar("nonce repetido se rechaza", repetido.status === 409, `estado ${repeti
 // Orígenes de navegador: solo los registrados
 const preflightMalo = await fetch(`${BASE}/api/v1/me/accounts`, { method: "OPTIONS", headers: { origin: "https://no-autorizado.ejemplo", "access-control-request-method": "GET" } });
 comprobar("origen no registrado no obtiene CORS", preflightMalo.status === 403, `estado ${preflightMalo.status}`);
+
+// Lo nuevo tampoco se ve entre usuarios
+comprobar("A no ve las tarjetas de B", (await get(`/api/v1/me/accounts/${IBAN_B}/cards`, tokA)).status === 404);
+comprobar("A no ve el extracto de B", (await get(`/api/v1/me/accounts/${IBAN_B}/statement`, tokA)).status === 404);
+const tarjetaAjena = await fetch(`${BASE}/api/v1/me/cards/REF-INEXISTENTE`, { method: "POST", headers: { authorization: `Bearer ${tokA}`, "content-type": "application/json" }, body: JSON.stringify({ estado: "suspended" }) });
+comprobar("A no puede suspender tarjetas ajenas", tarjetaAjena.status !== 200, `estado ${tarjetaAjena.status}`);
 
 // Cerrar sesión revoca el acceso
 await fetch(`${BASE}/api/v1/sessions`, { method: "DELETE", headers: { authorization: `Bearer ${tokA}` } });

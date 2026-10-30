@@ -11,8 +11,8 @@ export async function respuesta(req: Request, cuerpo: unknown, status = 200, cli
   const origen = req.headers.get("origin");
   const cab: Record<string, string> = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", vary: "Origin" };
   if (origen && clienteId) {
-    const { data } = await admin().from("plone27_client_origins").select("origin").eq("client_id", clienteId).eq("origin", origen).maybeSingle();
-    if (data) cab["access-control-allow-origin"] = origen;
+    const { data: ok } = await admin().rpc("plone27_origen_permitido", { p_origin: origen, p_client: clienteId });
+    if (ok === true) cab["access-control-allow-origin"] = origen;
   }
   return new Response(JSON.stringify(cuerpo), { status, headers: cab });
 }
@@ -20,8 +20,8 @@ export async function respuesta(req: Request, cuerpo: unknown, status = 200, cli
 // Comprobación previa del navegador: solo responde a orígenes registrados por algún cliente.
 export async function preflight(req: Request): Promise<Response> {
   const origen = req.headers.get("origin") ?? "";
-  const { data } = origen ? await admin().from("plone27_client_origins").select("origin").eq("origin", origen).limit(1) : { data: null };
-  if (!data || data.length === 0) return new Response(null, { status: 403, headers: { vary: "Origin" } });
+  const { data: ok } = origen ? await admin().rpc("plone27_origen_permitido", { p_origin: origen, p_client: null }) : { data: false };
+  if (ok !== true) return new Response(null, { status: 403, headers: { vary: "Origin" } });
   return new Response(null, { status: 204, headers: {
     "access-control-allow-origin": origen, "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,idempotency-key", "access-control-max-age": "600", vary: "Origin" } });

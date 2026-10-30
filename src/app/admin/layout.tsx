@@ -12,7 +12,7 @@ const GRUPOS: { titulo: string; items: [string, string][] }[] = [
   { titulo: "Clientes y cuentas", items: [["/admin/clientes", "Clientes"], ["/admin/cuentas", "Cuentas"], ["/admin/operaciones", "Operaciones"], ["/admin/registros", "Registros"], ["/admin/disputas", "Disputas"]] },
   { titulo: "Productos", items: [["/admin/productos", "Productos"], ["/admin/financiacion", "Financiación"], ["/admin/normas", "Normas"]] },
   { titulo: "Fiscalidad", items: [["/admin/infraestructura", "Infraestructura"], ["/admin/fiscal", "Fiscalidad"], ["/admin/iva", "IVA"], ["/admin/destinos", "Destinos"]] },
-  { titulo: "Entidades", items: [["/admin/bancos", "Bancos"], ["/admin/numeracion", "Numeración"], ["/admin/api", "API"]] },
+  { titulo: "Entidades", items: [["/admin/bancos", "Bancos"], ["/admin/numeracion", "Numeración"], ["/admin/api", "API"], ["/admin/api-bancos", "API bancos"]] },
   { titulo: "Sistema", items: [["/admin/personal", "Personal"], ["/admin/procesos", "Procesos"], ["/admin/settings", "Configuración"], ["/admin/console", "Consola"]] },
 ];
 

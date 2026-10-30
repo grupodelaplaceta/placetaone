@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [],
+    "paths": {
+      "@/*": [
+        "../src/*"
+      ]
+    }
+  },
+  "include": [
+    "../src/app/api/**/*.ts",
+    "../src/lib/*.ts",
+    "../sdk/*.ts",
+    "tipos/node-crypto.d.ts",
+    "tipos/entorno.d.ts"
+  ],
+  "exclude": []
+}

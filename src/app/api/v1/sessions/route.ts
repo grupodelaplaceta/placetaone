@@ -5,7 +5,7 @@ import { respuesta, preflight, normalizarDip } from "@/lib/sesion";
 export const OPTIONS = preflight;
 
 // Permisos que puede recibir un usuario. El banco pide cuáles; nunca puede ganar más que su cliente.
-const PERMISOS_USUARIO = ["me:read", "me:transfer"];
+const PERMISOS_USUARIO = ["me:read", "me:transfer", "me:contratar", "me:seguridad"];
 
 // Crear sesión de usuario. Solo desde el servidor del banco: clave + firma HMAC + ventana de 5 minutos + nonce único.
 export async function POST(req: Request) {
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const cruda = await req.text();
   const db = admin();
   const { data: c } = await db.from("plone27_api_clients").select("id,scopes,signing_secret,rate_limit")
-    .eq("key_hash", hashKey(req.headers.get("x-client-key") ?? "")).eq("active", true).maybeSingle();
+    .eq("key_hash", hashKey(req.headers.get("x-api-key") ?? req.headers.get("x-client-key") ?? "")).eq("active", true).maybeSingle();
   if (!c || !c.signing_secret) return respuesta(req, { error: "No autorizado" }, 401);
   if (!c.scopes.includes("sesiones:crear")) return respuesta(req, { error: "Permiso insuficiente" }, 403, c.id);
 

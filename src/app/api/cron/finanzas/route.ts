@@ -6,5 +6,6 @@ export async function GET(req: Request) {
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) return Response.json({ error: "No autorizado" }, { status: 401 });
   const { data, error } = await admin().rpc("plone27_finanzas_daily", { p_actor: null });
   if (error) return Response.json({ error: error.message }, { status: 500 });
+  await admin().rpc("plone27_limpiar_api");   // nonces y sesiones caducadas
   return Response.json(data);
 }

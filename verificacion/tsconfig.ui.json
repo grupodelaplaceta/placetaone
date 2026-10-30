@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [],
+    "paths": {
+      "@/lib/browser": [
+        "./tipos/browser-modulo.d.ts"
+      ],
+      "@/*": [
+        "../src/*"
+      ]
+    },
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "../src/app/admin/**/*.tsx",
+    "../src/lib/api.ts",
+    "tipos/*.d.ts"
+  ]
+}

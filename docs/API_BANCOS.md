@@ -76,7 +76,7 @@ export async function sesionParaUsuario(dip: string) {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-client-key": process.env.PLACETA_CLAVE!,
+      "x-api-key": process.env.PLACETA_CLAVE!,
       "x-timestamp": String(ts),
       "x-nonce": randomBytes(12).toString("base64url"),
       "x-signature": firma,
@@ -148,7 +148,7 @@ Ejecútalo en un entorno de pruebas antes de cada publicación. Debe terminar co
 - [ ] El backend crea la sesión **después** de autenticar al usuario en tu sistema.
 - [ ] Renuevas la sesión desde el backend, no desde el navegador.
 - [ ] Las transferencias llevan `Idempotency-Key` única por intento.
-- [ ] El origen de tu web está registrado en Placeta One; ningún otro dominio recibe CORS.
+- [ ] El origen de tu web está aprobado para tu cliente (`/api/v1/bk/origenes`); ningún otro dominio recibe CORS.
 - [ ] `scripts/aislamiento.mjs` termina sin fallos en el entorno de pruebas.
 - [ ] Rotas la clave y el secreto si sospechas que se han filtrado (ver sección 9).
 
