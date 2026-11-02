@@ -9,7 +9,7 @@ import { DialogHost } from "./ui";
 // Menú agrupado por área. Cada página del panel aparece una sola vez.
 const GRUPOS: { titulo: string; items: [string, string][] }[] = [
   { titulo: "Principal", items: [["/admin", "Panel"], ["/admin/previsiones", "Previsiones"], ["/admin/estado", "Estado"]] },
-  { titulo: "Clientes y cuentas", items: [["/admin/clientes", "Clientes"], ["/admin/cuentas", "Cuentas"], ["/admin/operaciones", "Operaciones"], ["/admin/registros", "Registros"], ["/admin/disputas", "Disputas"]] },
+  { titulo: "Clientes y cuentas", items: [["/admin/solicitudes", "Solicitudes"], ["/admin/clientes", "Clientes"], ["/admin/cuentas", "Cuentas"], ["/admin/operaciones", "Operaciones"], ["/admin/registros", "Registros"], ["/admin/disputas", "Disputas"]] },
   { titulo: "Productos", items: [["/admin/productos", "Productos"], ["/admin/financiacion", "Financiación"], ["/admin/normas", "Normas"]] },
   { titulo: "Fiscalidad", items: [["/admin/infraestructura", "Infraestructura"], ["/admin/fiscal", "Fiscalidad"], ["/admin/iva", "IVA"], ["/admin/destinos", "Destinos"]] },
   { titulo: "Entidades", items: [["/admin/bancos", "Bancos"], ["/admin/numeracion", "Numeración"], ["/admin/api", "API"], ["/admin/api-bancos", "API bancos"], ["/admin/organigrama", "Organigrama"], ["/admin/institucional", "Institucional"]] },
