@@ -4017,6 +4017,1267 @@ do $$ declare t text; f text; begin
     execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
 end $$;
 
+-- ==================== MIGRACIÓN (0025_plone27_diseno_publicado_con_imagen.sql) ====================
+-- Placeta One · 0025 · Un diseño no puede publicarse en la API sin imagen.
+-- Requiere 0024. Idempotente (el generador de instalación la hace reejecutable).
+do $$ begin alter table plone27_card_designs add constraint plone27_design_publicado_imagen_ck
+  check(not publicado_api or imagen_url is not null) not valid; exception when duplicate_object then null; end $$;
+
+-- ==================== MIGRACIÓN (0026_plone27_cuenta_institucional.sql) ====================
+-- Placeta One · 0026 · Cuenta institucional (fase 1): CIP, organigrama, puestos, multicargos,
+-- historial de nombramientos y delegaciones. Requiere 0025. Idempotente.
+-- Supuestos: el CIP lo genera la plataforma (CIP-00000001…); las personas se identifican por DIP.
+
+create sequence if not exists plone27_cip_seq;
+
+create table if not exists plone27_entidades(
+  account_id uuid primary key references plone27_accounts,
+  bank_id uuid not null references plone27_banks,
+  cip text not null unique default ('CIP-'||lpad(nextval('plone27_cip_seq')::text,8,'0'))
+    check(cip ~ '^CIP-[0-9]{8}$'),
+  nombre text not null check(length(nombre) between 2 and 120),
+  activa boolean not null default true,
+  creada timestamptz not null default now());
+
+create table if not exists plone27_unidades(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  padre uuid references plone27_unidades(id),
+  tipo text not null check(tipo in('junta','administracion','departamento','subdepartamento','proyecto','institucion','unidad_control')),
+  nombre text not null check(length(nombre) between 2 and 120),
+  codigo text check(codigo is null or codigo ~ '^[A-Z0-9-]{2,20}$'),
+  activa boolean not null default true,
+  creada timestamptz not null default now(),
+  unique(entidad,codigo));
+
+-- Jerarquía permitida: Junta / Administración → departamentos; departamento → subdepartamentos y proyectos;
+-- Junta / Administración → instituciones; departamento, subdepartamento o proyecto → unidades de control.
+create or replace function plone27_unidad_jerarquia() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare pt text; pe uuid; begin
+  if new.padre is null then
+    if new.tipo in('junta','administracion','institucion') then return new; end if;
+    raise exception 'Una unidad de tipo % necesita una unidad padre', new.tipo;
+  end if;
+  if new.padre=new.id then raise exception 'Una unidad no puede depender de sí misma'; end if;
+  select u.tipo,u.entidad into pt,pe from plone27_unidades u where u.id=new.padre;
+  if pt is null then raise exception 'La unidad padre no existe'; end if;
+  if pe<>new.entidad then raise exception 'La unidad padre pertenece a otra entidad'; end if;
+  if new.tipo in('junta','administracion') then raise exception 'Junta y Administración no dependen de otra unidad'; end if;
+  if new.tipo='departamento' and pt not in('junta','administracion') then raise exception 'Un departamento depende de Junta o Administración'; end if;
+  if new.tipo='subdepartamento' and pt<>'departamento' then raise exception 'Un subdepartamento depende de un departamento'; end if;
+  if new.tipo='proyecto' and pt not in('departamento','subdepartamento') then raise exception 'Un proyecto depende de un departamento o subdepartamento'; end if;
+  if new.tipo='institucion' and pt not in('junta','administracion') then raise exception 'Una institución depende de Junta o Administración'; end if;
+  if new.tipo='unidad_control' and pt not in('departamento','subdepartamento','proyecto') then raise exception 'Una unidad de control depende de un departamento, subdepartamento o proyecto'; end if;
+  return new; end $$;
+
+drop trigger if exists t_unidad_jerarquia on plone27_unidades;
+drop trigger if exists t_unidad_jerarquia on plone27_unidades;
+create trigger t_unidad_jerarquia before insert or update on plone27_unidades
+  for each row execute function plone27_unidad_jerarquia();
+
+create table if not exists plone27_puestos(
+  id uuid primary key default gen_random_uuid(),
+  unidad uuid not null references plone27_unidades(id),
+  nombre text not null check(length(nombre) between 2 and 120),
+  titulares_max int not null default 1 check(titulares_max between 1 and 50),
+  activo boolean not null default true,
+  creado timestamptz not null default now());
+
+-- Historial: cada nombramiento queda registrado; el cese cierra el periodo (hasta), no lo borra.
+create table if not exists plone27_nombramientos(
+  id uuid primary key default gen_random_uuid(),
+  puesto uuid not null references plone27_puestos(id),
+  persona uuid not null references plone27_personas,
+  desde date not null default current_date,
+  hasta date,
+  motivo text not null check(length(motivo) between 5 and 300),
+  nombrado_por uuid,
+  cesado_por uuid,
+  check(hasta is null or hasta>=desde));
+create unique index if not exists plone27_nombramiento_activo_ux on plone27_nombramientos(puesto,persona) where hasta is null;
+
+-- Delegaciones: registro de quién puede actuar en un área. Aún no condicionan las aprobaciones (fase 3).
+create table if not exists plone27_delegaciones(
+  id uuid primary key default gen_random_uuid(),
+  unidad uuid not null references plone27_unidades(id),
+  persona uuid not null references plone27_personas,
+  permiso text not null check(permiso in('consultar','proponer','aprobar','ejecutar')),
+  limite numeric(18,2) check(limite is null or limite>0),
+  desde date not null default current_date,
+  hasta date,
+  motivo text not null check(length(motivo) between 5 and 300),
+  otorgada_por uuid,
+  revocada_at timestamptz,
+  check(hasta is null or hasta>=desde));
+
+create or replace function plone27_entidad_alta(p_bank uuid,p_account uuid,p_nombre text,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare c text; begin
+  if not exists(select 1 from plone27_accounts a where a.id=p_account and a.bank_id=p_bank) then
+    raise exception 'Cuenta no encontrada en la entidad';
+  end if;
+  insert into plone27_entidades(account_id,bank_id,nombre) values(p_account,p_bank,p_nombre) returning plone27_entidades.cip into c;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'entidad_alta','account',p_account::text,jsonb_build_object('cip',c,'nombre',p_nombre));
+  return c; end $$;
+
+create or replace function plone27_unidad_alta(p_entidad uuid,p_tipo text,p_padre uuid,p_nombre text,p_codigo text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare uid uuid; begin
+  insert into plone27_unidades(entidad,tipo,padre,nombre,codigo) values(p_entidad,p_tipo,p_padre,p_nombre,p_codigo)
+    returning plone27_unidades.id into uid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'unidad_alta','unidad',uid::text,jsonb_build_object('tipo',p_tipo,'nombre',p_nombre));
+  return uid; end $$;
+
+create or replace function plone27_puesto_alta(p_unidad uuid,p_nombre text,p_titulares int,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare pid uuid; begin
+  insert into plone27_puestos(unidad,nombre,titulares_max) values(p_unidad,p_nombre,coalesce(p_titulares,1))
+    returning plone27_puestos.id into pid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'puesto_alta','puesto',pid::text,jsonb_build_object('nombre',p_nombre));
+  return pid; end $$;
+
+-- Nombrar a una persona en un puesto. Una persona puede tener varios puestos (multicargo).
+create or replace function plone27_nombrar(p_puesto uuid,p_persona uuid,p_motivo text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare maximo int; ocupados int; nid uuid; begin
+  select p.titulares_max into maximo from plone27_puestos p where p.id=p_puesto and p.activo;
+  if maximo is null then raise exception 'Puesto no encontrado o inactivo'; end if;
+  select count(*) into ocupados from plone27_nombramientos n where n.puesto=p_puesto and n.hasta is null;
+  if ocupados>=maximo then raise exception 'El puesto está completo (% de %)', ocupados, maximo; end if;
+  insert into plone27_nombramientos(puesto,persona,motivo,nombrado_por) values(p_puesto,p_persona,p_motivo,p_actor)
+    returning plone27_nombramientos.id into nid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'nombramiento_alta','puesto',p_puesto::text,jsonb_build_object('persona',p_persona,'nombramiento',nid));
+  return nid; end $$;
+
+-- Cesar: cierra el periodo activo del nombramiento
+create or replace function plone27_cesar(p_nombramiento uuid,p_motivo text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_nombramientos set hasta=current_date,cesado_por=p_actor
+            where id=p_nombramiento and hasta is null returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Nombramiento no encontrado o ya cesado'; end if;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'nombramiento_cese','nombramiento',p_nombramiento::text,jsonb_build_object('motivo',p_motivo));
+end $$;
+
+create or replace function plone27_delegar(p_unidad uuid,p_persona uuid,p_permiso text,p_limite numeric,p_hasta date,p_motivo text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare did uuid; begin
+  insert into plone27_delegaciones(unidad,persona,permiso,limite,hasta,motivo,otorgada_por)
+    values(p_unidad,p_persona,p_permiso,p_limite,p_hasta,p_motivo,p_actor) returning plone27_delegaciones.id into did;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'delegacion_alta','unidad',p_unidad::text,jsonb_build_object('persona',p_persona,'permiso',p_permiso));
+  return did; end $$;
+
+create or replace function plone27_revocar_delegacion(p_id uuid,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_delegaciones set revocada_at=now()
+            where id=p_id and revocada_at is null returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Delegación no encontrada o ya revocada'; end if;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'delegacion_revocada','delegacion',p_id::text,'{}'::jsonb);
+end $$;
+
+-- Plantilla vigente de una entidad: personas con su puesto y unidad
+create or replace function plone27_plantilla(p_entidad uuid)
+returns table(persona uuid,unidad text,puesto text,desde date)
+language sql stable security definer set search_path=public as $$
+  select n.persona, u.nombre, p.nombre, n.desde
+  from plone27_nombramientos n
+    join plone27_puestos p on p.id=n.puesto
+    join plone27_unidades u on u.id=p.unidad
+  where u.entidad=p_entidad and n.hasta is null
+  order by u.nombre, p.nombre $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0027_plone27_institucional_presupuestos_nominas.sql) ====================
+-- Placeta One · 0027 · Cuenta institucional (fases 2, 3, 4 y 6): presupuestos jerárquicos, permisos por puesto,
+-- delegaciones aplicadas, gastos con doble firma, retribuciones, tareas con complementos, nóminas por periodo,
+-- reasignaciones, informes, cierre de unidades y funciones para la API. Requiere 0026. Idempotente.
+
+alter table plone27_entidades add column if not exists presupuesto_anual numeric(18,2) not null default 0 check(presupuesto_anual>=0);
+alter table plone27_entidades add column if not exists doble_firma_desde numeric(18,2) check(doble_firma_desde is null or doble_firma_desde>0);
+
+-- ---------- Permisos configurables por puesto ----------
+create table if not exists plone27_puesto_permisos(
+  puesto uuid not null references plone27_puestos(id),
+  accion text not null check(accion in('proponer','aprobar','ejecutar','presupuestar','reasignar','retribuir','organigrama','cerrar')),
+  limite numeric(18,2) check(limite is null or limite>0),
+  primary key(puesto,accion));
+
+-- ---------- Presupuesto anual por unidad y ejercicio ----------
+create table if not exists plone27_presupuestos(
+  unidad uuid not null references plone27_unidades(id),
+  ejercicio int not null check(ejercicio between 2000 and 2100),
+  anual numeric(18,2) not null default 0 check(anual>=0),
+  primary key(unidad,ejercicio));
+
+-- ---------- Gastos: propuesto → aprobado → pagado (o rechazado) ----------
+create table if not exists plone27_gastos(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  unidad uuid not null references plone27_unidades(id),
+  ejercicio int not null check(ejercicio between 2000 and 2100),
+  importe numeric(18,2) not null check(importe>0),
+  concepto text not null check(length(concepto) between 3 and 200),
+  origen text not null default 'manual' check(origen in('manual','tarea','retribucion')),
+  beneficiario uuid references plone27_accounts,
+  propuesto_por uuid not null references plone27_personas,
+  aprobado_por uuid references plone27_personas,
+  pagado_por uuid references plone27_personas,
+  estado text not null default 'propuesto' check(estado in('propuesto','aprobado','pagado','rechazado')),
+  tx uuid,
+  idem_key text unique,
+  creado timestamptz not null default now(),
+  resuelto timestamptz,
+  check(aprobado_por is null or aprobado_por<>propuesto_por),
+  check(pagado_por is null or pagado_por<>propuesto_por),
+  check(pagado_por is null or aprobado_por is null or pagado_por<>aprobado_por));
+
+-- Firmas de doble autorización (importes por encima del umbral de la entidad)
+create table if not exists plone27_gasto_firmas(
+  gasto uuid not null references plone27_gastos(id),
+  persona uuid not null references plone27_personas,
+  creada timestamptz not null default now(),
+  primary key(gasto,persona));
+
+-- ---------- Retribuciones fijas y complementos autorizados ----------
+create table if not exists plone27_retribuciones(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  persona uuid not null references plone27_personas,
+  concepto text not null check(length(concepto) between 3 and 120),
+  importe numeric(18,2) not null check(importe>0),
+  desde date not null,
+  hasta date,
+  motivo text not null check(length(motivo) between 5 and 300),
+  autorizada_por uuid not null references plone27_personas,
+  creada timestamptz not null default now(),
+  check(hasta is null or hasta>=desde));
+
+-- ---------- Tareas que generan un complemento (las registra NEXE u otra app) ----------
+create table if not exists plone27_tareas(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  persona uuid not null references plone27_personas,
+  unidad uuid not null references plone27_unidades(id),
+  concepto text not null check(length(concepto) between 3 and 200),
+  importe numeric(18,2) not null check(importe>0),
+  referencia_externa text not null unique check(length(referencia_externa) between 1 and 120),
+  origen_app text not null check(length(origen_app) between 1 and 60),
+  gasto uuid references plone27_gastos(id),
+  estado text not null default 'registrada' check(estado in('registrada','validada','pagada','rechazada')),
+  creada timestamptz not null default now());
+
+-- ---------- Nóminas pagadas por periodo (idempotencia de la nómina) ----------
+create table if not exists plone27_nominas_pagadas(
+  persona uuid not null references plone27_personas,
+  periodo text not null check(periodo ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+  referencia text not null,
+  importe numeric(18,2) not null,
+  gasto uuid references plone27_gastos(id),
+  tx uuid,
+  creada timestamptz not null default now(),
+  primary key(persona,periodo,referencia));
+
+-- ================= Funciones auxiliares =================
+create or replace function plone27_ancestros(p_unidad uuid) returns table(id uuid)
+language sql stable security definer set search_path=public as $$
+  with recursive a as (
+    select u.id, u.padre from plone27_unidades u where u.id=p_unidad
+    union all
+    select u.id, u.padre from plone27_unidades u join a on u.id=a.padre)
+  select a.id from a $$;
+
+create or replace function plone27_descendientes(p_unidad uuid) returns table(id uuid)
+language sql stable security definer set search_path=public as $$
+  with recursive d as (
+    select u.id from plone27_unidades u where u.id=p_unidad
+    union all
+    select u.id from plone27_unidades u join d on u.padre=d.id)
+  select d.id from d $$;
+
+-- Lo comprometido y ejecutado de una unidad y de todas las unidades que dependen de ella
+create or replace function plone27_gastado(p_unidad uuid,p_ejercicio int) returns numeric
+language sql stable security definer set search_path=public as $$
+  select coalesce(sum(g.importe),0) from plone27_gastos g
+  where g.ejercicio=p_ejercicio and g.estado in('aprobado','pagado')
+    and g.unidad in (select d.id from plone27_descendientes(p_unidad) d) $$;
+
+create or replace function plone27_entidad_de(p_bank uuid,p_cip text) returns uuid
+language sql stable security definer set search_path=public as $$
+  select e.account_id from plone27_entidades e where e.cip=p_cip and e.bank_id=p_bank and e.activa $$;
+
+create or replace function plone27_tiene_en_entidad(p_persona uuid,p_entidad uuid,p_accion text) returns boolean
+language sql stable security definer set search_path=public as $$
+  select exists(select 1 from plone27_nombramientos n
+    join plone27_puestos pu on pu.id=n.puesto and pu.activo
+    join plone27_unidades u on u.id=pu.unidad and u.entidad=p_entidad
+    join plone27_puesto_permisos pp on pp.puesto=pu.id and pp.accion=p_accion
+    where n.persona=p_persona and n.hasta is null) $$;
+
+create or replace function plone27_cuenta_titular(p_persona uuid,p_bank uuid) returns uuid
+language sql stable security definer set search_path=public as $$
+  select a.id from plone27_account_members m join plone27_accounts a on a.id=m.account_id
+  where m.user_id=p_persona and a.bank_id=p_bank and a.kind='personal' and a.status='active' and m.role='holder'
+  order by a.iban limit 1 $$;
+
+create or replace function plone27_puesto_de(p_persona uuid,p_entidad uuid) returns uuid
+language sql stable security definer set search_path=public as $$
+  select u.id from plone27_nombramientos n
+    join plone27_puestos pu on pu.id=n.puesto
+    join plone27_unidades u on u.id=pu.unidad
+  where n.persona=p_persona and n.hasta is null and u.entidad=p_entidad
+  order by n.desde limit 1 $$;
+
+-- ¿Puede la persona realizar la acción sobre la unidad? Por puesto (en la unidad o en sus superiores) o por delegación vigente.
+create or replace function plone27_puede(p_persona uuid,p_unidad uuid,p_accion text,p_importe numeric) returns boolean
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if exists(select 1 from plone27_nombramientos n
+      join plone27_puestos pu on pu.id=n.puesto and pu.activo
+      join plone27_puesto_permisos pp on pp.puesto=pu.id and pp.accion=p_accion
+    where n.persona=p_persona and n.hasta is null
+      and pu.unidad in (select a.id from plone27_ancestros(p_unidad) a)
+      and (pp.limite is null or (p_importe is not null and pp.limite>=p_importe))) then
+    return true;
+  end if;
+  if exists(select 1 from plone27_delegaciones d
+    where d.persona=p_persona and d.permiso=p_accion and d.revocada_at is null
+      and d.desde<=current_date and (d.hasta is null or d.hasta>=current_date)
+      and d.unidad in (select a.id from plone27_ancestros(p_unidad) a)
+      and (d.limite is null or (p_importe is not null and d.limite>=p_importe))) then
+    return true;
+  end if;
+  return false;
+end $$;
+
+-- Presupuesto suficiente en la unidad y en todas sus superiores. Cada nivel debe tener presupuesto.
+create or replace function plone27_verificar_presupuesto(p_unidad uuid,p_ejercicio int,p_importe numeric) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare r record; asig numeric; nom text; gast numeric; begin
+  for r in select x.id from plone27_ancestros(p_unidad) x loop
+    select p.anual into asig from plone27_presupuestos p where p.unidad=r.id and p.ejercicio=p_ejercicio;
+    select u.nombre into nom from plone27_unidades u where u.id=r.id;
+    if asig is null then raise exception 'La unidad % no tiene presupuesto para %', nom, p_ejercicio; end if;
+    gast:=plone27_gastado(r.id,p_ejercicio);
+    if gast+p_importe>asig then raise exception 'Presupuesto insuficiente en % (disponible: %)', nom, asig-gast; end if;
+  end loop;
+end $$;
+
+-- ================= Presupuestos =================
+create or replace function plone27_entidad_presupuesto_fijar(p_bank uuid,p_cip text,p_actor uuid,p_importe numeric) returns numeric
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'presupuestar') then raise exception 'Sin permiso para presupuestar la entidad'; end if;
+  if p_importe is null or p_importe<0 then raise exception 'Importe no válido'; end if;
+  update plone27_entidades set presupuesto_anual=p_importe where account_id=ent;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'entidad_presupuesto','account',ent::text,jsonb_build_object('importe',p_importe));
+  return p_importe;
+end $$;
+
+-- Fija el presupuesto anual de una unidad. Los hijos no pueden sumar más que su unidad, las unidades superiores
+-- no pueden sumar más que la entidad, y no se puede bajar de lo ya comprometido.
+create or replace function plone27_presupuesto_fijar(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_ejercicio int,p_importe numeric) returns numeric
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; pad uuid; gast numeric; hijos numeric; hermanas numeric; techo numeric; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  if p_importe is null or p_importe<0 then raise exception 'Importe no válido'; end if;
+  if not plone27_puede(p_actor,p_unidad,'presupuestar',p_importe) then raise exception 'Sin permiso para presupuestar esta unidad'; end if;
+  gast:=plone27_gastado(p_unidad,p_ejercicio);
+  if p_importe<gast then raise exception 'El presupuesto no puede quedar por debajo de lo ya comprometido o gastado (%)', gast; end if;
+  select coalesce(sum(p.anual),0) into hijos from plone27_presupuestos p join plone27_unidades u on u.id=p.unidad
+    where u.padre=p_unidad and p.ejercicio=p_ejercicio;
+  if p_importe<hijos then raise exception 'Las unidades inferiores suman % y superan este presupuesto', hijos; end if;
+  select u.padre into pad from plone27_unidades u where u.id=p_unidad;
+  if pad is not null then
+    select coalesce(sum(p.anual),0) into hermanas from plone27_presupuestos p join plone27_unidades u on u.id=p.unidad
+      where u.padre=pad and p.ejercicio=p_ejercicio and u.id<>p_unidad;
+    select coalesce((select p.anual from plone27_presupuestos p where p.unidad=pad and p.ejercicio=p_ejercicio),0) into techo;
+    if hermanas+p_importe>techo then raise exception 'Las unidades de este nivel superan el presupuesto de su unidad superior (%)', techo; end if;
+  else
+    select coalesce(sum(p.anual),0) into hermanas from plone27_presupuestos p join plone27_unidades u on u.id=p.unidad
+      where u.entidad=ent and u.padre is null and p.ejercicio=p_ejercicio and u.id<>p_unidad;
+    select e.presupuesto_anual into techo from plone27_entidades e where e.account_id=ent;
+    if hermanas+p_importe>techo then raise exception 'Las unidades de primer nivel superan el presupuesto general de la entidad (%)', techo; end if;
+  end if;
+  insert into plone27_presupuestos(unidad,ejercicio,anual) values(p_unidad,p_ejercicio,p_importe)
+    on conflict(unidad,ejercicio) do update set anual=excluded.anual;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'presupuesto_fijar','unidad',p_unidad::text,jsonb_build_object('ejercicio',p_ejercicio,'importe',p_importe));
+  return p_importe;
+end $$;
+
+-- Mueve presupuesto entre dos unidades con la misma unidad superior. No cambia el total de la entidad.
+create or replace function plone27_presupuesto_reasignar(p_bank uuid,p_cip text,p_actor uuid,p_desde uuid,p_hasta uuid,p_ejercicio int,p_importe numeric,p_motivo text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; pd uuid; ph uuid; asig numeric; gast numeric; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if p_desde=p_hasta then raise exception 'Origen y destino no pueden ser la misma unidad'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_desde and u.entidad=ent) or
+     not exists(select 1 from plone27_unidades u where u.id=p_hasta and u.entidad=ent) then
+    raise exception 'Unidad no encontrada en la entidad';
+  end if;
+  select u.padre into pd from plone27_unidades u where u.id=p_desde;
+  select u.padre into ph from plone27_unidades u where u.id=p_hasta;
+  if pd is distinct from ph then raise exception 'Solo se reasigna entre unidades con la misma unidad superior'; end if;
+  if p_importe is null or p_importe<=0 then raise exception 'Importe no válido'; end if;
+  if length(coalesce(p_motivo,''))<5 then raise exception 'El motivo es obligatorio (mínimo 5 caracteres)'; end if;
+  if not plone27_puede(p_actor,p_desde,'reasignar',p_importe) then raise exception 'Sin permiso para reasignar desde esta unidad'; end if;
+  select p.anual into asig from plone27_presupuestos p where p.unidad=p_desde and p.ejercicio=p_ejercicio;
+  if asig is null then raise exception 'La unidad de origen no tiene presupuesto para ese ejercicio'; end if;
+  gast:=plone27_gastado(p_desde,p_ejercicio);
+  if asig-gast<p_importe then raise exception 'Disponible insuficiente en la unidad de origen (%)', asig-gast; end if;
+  update plone27_presupuestos set anual=anual-p_importe where unidad=p_desde and ejercicio=p_ejercicio;
+  insert into plone27_presupuestos(unidad,ejercicio,anual) values(p_hasta,p_ejercicio,p_importe)
+    on conflict(unidad,ejercicio) do update set anual=plone27_presupuestos.anual+excluded.anual;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'presupuesto_reasignar','unidad',p_desde::text,jsonb_build_object('destino',p_hasta,'importe',p_importe,'motivo',p_motivo));
+end $$;
+
+-- Informe de una unidad: presupuesto, comprometido, pagado, pendiente y disponible; y sus unidades inferiores
+create or replace function plone27_informe_unidad(p_bank uuid,p_cip text,p_unidad uuid,p_ejercicio int) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; asig numeric; gast numeric; pag numeric; pend numeric; hijos jsonb; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  select p.anual into asig from plone27_presupuestos p where p.unidad=p_unidad and p.ejercicio=p_ejercicio;
+  gast:=plone27_gastado(p_unidad,p_ejercicio);
+  select coalesce(sum(g.importe),0) into pag from plone27_gastos g
+    where g.ejercicio=p_ejercicio and g.estado='pagado' and g.unidad in (select d.id from plone27_descendientes(p_unidad) d);
+  select coalesce(sum(g.importe),0) into pend from plone27_gastos g
+    where g.ejercicio=p_ejercicio and g.estado='propuesto' and g.unidad in (select d.id from plone27_descendientes(p_unidad) d);
+  select coalesce(jsonb_agg(jsonb_build_object('unidad',u.id,'nombre',u.nombre,'tipo',u.tipo,
+           'anual',coalesce(p.anual,0),'gastado',plone27_gastado(u.id,p_ejercicio)) order by u.nombre),'[]'::jsonb)
+    into hijos from plone27_unidades u left join plone27_presupuestos p on p.unidad=u.id and p.ejercicio=p_ejercicio
+    where u.padre=p_unidad;
+  return jsonb_build_object('unidad',p_unidad,'ejercicio',p_ejercicio,'anual',coalesce(asig,0),'gastado',gast,
+    'pagado',pag,'pendiente_aprobacion',pend,'disponible',coalesce(asig,0)-gast,'unidades_inferiores',hijos);
+end $$;
+
+-- ================= Gastos =================
+create or replace function plone27_gasto_proponer(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_ejercicio int,p_importe numeric,p_concepto text,p_iban text,p_key text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; ben uuid; gid uuid; begin
+  if p_key is not null then
+    select g.id into gid from plone27_gastos g where g.idem_key=p_key;
+    if gid is not null then return gid; end if;
+  end if;
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  if exists(select 1 from plone27_ancestros(p_unidad) a join plone27_unidades u on u.id=a.id where not u.activa) then
+    raise exception 'La unidad o una de sus superiores está cerrada';
+  end if;
+  if p_importe is null or p_importe<=0 then raise exception 'Importe no válido'; end if;
+  if coalesce(length(p_concepto),0)<3 then raise exception 'Concepto de al menos 3 caracteres'; end if;
+  if not plone27_puede(p_actor,p_unidad,'proponer',p_importe) then raise exception 'Sin permiso para proponer gastos en esta unidad'; end if;
+  if coalesce(p_iban,'')<>'' then
+    select a.id into ben from plone27_accounts a where a.iban=p_iban and a.bank_id=p_bank and a.status='active';
+    if ben is null then raise exception 'Cuenta beneficiaria no válida'; end if;
+  end if;
+  insert into plone27_gastos(entidad,unidad,ejercicio,importe,concepto,beneficiario,propuesto_por,idem_key)
+    values(ent,p_unidad,p_ejercicio,p_importe,p_concepto,ben,p_actor,p_key) returning plone27_gastos.id into gid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'gasto_propuesto','gasto',gid::text,jsonb_build_object('importe',p_importe,'unidad',p_unidad));
+  return gid;
+end $$;
+
+-- Aprueba un gasto. Si el importe supera el umbral de doble firma, hacen falta dos personas distintas.
+create or replace function plone27_gasto_aprobar(p_bank uuid,p_gasto uuid,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare g plone27_gastos; umbral numeric; n int; begin
+  select * into g from plone27_gastos where id=p_gasto for update;
+  if g.id is null or not exists(select 1 from plone27_entidades e where e.account_id=g.entidad and e.bank_id=p_bank) then
+    raise exception 'Gasto no encontrado';
+  end if;
+  if g.estado<>'propuesto' then raise exception 'Solo se aprueban gastos propuestos'; end if;
+  if p_actor=g.propuesto_por then raise exception 'Nadie puede aprobar su propio gasto'; end if;
+  if not plone27_puede(p_actor,g.unidad,'aprobar',g.importe) then raise exception 'Sin permiso para aprobar este gasto'; end if;
+  select e.doble_firma_desde into umbral from plone27_entidades e where e.account_id=g.entidad;
+  if umbral is not null and g.importe>umbral then
+    insert into plone27_gasto_firmas(gasto,persona) values(p_gasto,p_actor) on conflict do nothing;
+    select count(*) into n from plone27_gasto_firmas f where f.gasto=p_gasto;
+    if n<2 then return 'pendiente_segunda_firma'; end if;
+  end if;
+  perform 1 from plone27_presupuestos p where p.ejercicio=g.ejercicio and p.unidad in (select a.id from plone27_ancestros(g.unidad) a) for update;
+  perform plone27_verificar_presupuesto(g.unidad,g.ejercicio,g.importe);
+  update plone27_gastos set estado='aprobado', aprobado_por=p_actor, resuelto=now() where id=p_gasto;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'gasto_aprobado','gasto',p_gasto::text,jsonb_build_object('importe',g.importe));
+  return 'aprobado';
+end $$;
+
+create or replace function plone27_gasto_rechazar(p_bank uuid,p_gasto uuid,p_actor uuid,p_motivo text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare g plone27_gastos; begin
+  select * into g from plone27_gastos where id=p_gasto for update;
+  if g.id is null or not exists(select 1 from plone27_entidades e where e.account_id=g.entidad and e.bank_id=p_bank) then
+    raise exception 'Gasto no encontrado';
+  end if;
+  if g.estado not in('propuesto','aprobado') then raise exception 'Este gasto ya no se puede rechazar'; end if;
+  if p_actor=g.propuesto_por then raise exception 'Nadie puede rechazar su propio gasto'; end if;
+  if not plone27_puede(p_actor,g.unidad,'aprobar',g.importe) then raise exception 'Sin permiso para rechazar este gasto'; end if;
+  update plone27_gastos set estado='rechazado', resuelto=now() where id=p_gasto;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'gasto_rechazado','gasto',p_gasto::text,jsonb_build_object('motivo',p_motivo));
+end $$;
+
+-- Ejecuta el pago de un gasto aprobado desde la cuenta de la entidad. Quien propone o aprueba no puede pagar.
+create or replace function plone27_gasto_pagar(p_bank uuid,p_gasto uuid,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare g plone27_gastos; tx uuid; begin
+  select * into g from plone27_gastos where id=p_gasto for update;
+  if g.id is null or not exists(select 1 from plone27_entidades e where e.account_id=g.entidad and e.bank_id=p_bank) then
+    raise exception 'Gasto no encontrado';
+  end if;
+  if g.estado<>'aprobado' then raise exception 'Solo se pagan gastos aprobados'; end if;
+  if p_actor=g.propuesto_por or p_actor=g.aprobado_por then raise exception 'Quien propone o aprueba no puede ejecutar el pago'; end if;
+  if exists(select 1 from plone27_gasto_firmas f where f.gasto=p_gasto and f.persona=p_actor) then raise exception 'Quien firma no puede ejecutar el pago'; end if;
+  if g.beneficiario is null then raise exception 'El gasto no tiene cuenta beneficiaria'; end if;
+  if not plone27_puede(p_actor,g.unidad,'ejecutar',g.importe) then raise exception 'Sin permiso para ejecutar este pago'; end if;
+  tx:=plone27_transfer('gasto:'||g.id::text,g.entidad,g.beneficiario,g.importe,g.concepto,p_actor);
+  update plone27_gastos set estado='pagado', pagado_por=p_actor, tx=tx, resuelto=now() where id=p_gasto;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'gasto_pagado','gasto',p_gasto::text,jsonb_build_object('importe',g.importe,'tx',tx));
+  return tx;
+end $$;
+
+-- ================= Retribuciones y tareas =================
+create or replace function plone27_retribucion_fijar(p_bank uuid,p_cip text,p_actor uuid,p_persona uuid,p_concepto text,p_importe numeric,p_desde date,p_hasta date,p_motivo text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; unidad uuid; rid uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  unidad:=plone27_puesto_de(p_persona,ent);
+  if unidad is null then raise exception 'La persona no tiene puesto en la entidad'; end if;
+  if p_actor=p_persona then raise exception 'Nadie puede autorizar su propia retribución'; end if;
+  if not plone27_puede(p_actor,unidad,'retribuir',p_importe) then raise exception 'Sin permiso para retribuir a esta persona'; end if;
+  insert into plone27_retribuciones(entidad,persona,concepto,importe,desde,hasta,motivo,autorizada_por)
+    values(ent,p_persona,p_concepto,p_importe,p_desde,p_hasta,p_motivo,p_actor) returning plone27_retribuciones.id into rid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'retribucion_fijada','retribucion',rid::text,jsonb_build_object('importe',p_importe,'concepto',p_concepto));
+  return rid;
+end $$;
+
+-- Una tarea registrada por una app externa genera un gasto propuesto a nombre de la persona que la realizó.
+create or replace function plone27_tarea_registrar(p_bank uuid,p_cip text,p_persona uuid,p_unidad uuid,p_concepto text,p_importe numeric,p_referencia text,p_origen text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; ben uuid; gid uuid; tid uuid; begin
+  select t.id into tid from plone27_tareas t where t.referencia_externa=p_referencia;
+  if tid is not null then return tid; end if;
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent and u.activa) then raise exception 'Unidad no válida o cerrada'; end if;
+  if plone27_puesto_de(p_persona,ent) is null then raise exception 'La persona no tiene puesto en la entidad'; end if;
+  ben:=plone27_cuenta_titular(p_persona,p_bank);
+  if ben is null then raise exception 'La persona no tiene cuenta en la entidad'; end if;
+  insert into plone27_gastos(entidad,unidad,ejercicio,importe,concepto,origen,beneficiario,propuesto_por)
+    values(ent,p_unidad,extract(year from current_date)::int,p_importe,p_concepto,'tarea',ben,p_persona)
+    returning plone27_gastos.id into gid;
+  insert into plone27_tareas(entidad,persona,unidad,concepto,importe,referencia_externa,origen_app,gasto)
+    values(ent,p_persona,p_unidad,p_concepto,p_importe,p_referencia,p_origen,gid) returning plone27_tareas.id into tid;
+  return tid;
+end $$;
+
+create or replace function plone27_tarea_validar(p_bank uuid,p_tarea uuid,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare t plone27_tareas; r text; begin
+  select * into t from plone27_tareas where id=p_tarea for update;
+  if t.id is null or not exists(select 1 from plone27_entidades e where e.account_id=t.entidad and e.bank_id=p_bank) then raise exception 'Tarea no encontrada'; end if;
+  if t.estado<>'registrada' then raise exception 'La tarea no está pendiente de validación'; end if;
+  r:=plone27_gasto_aprobar(p_bank,t.gasto,p_actor);
+  if r='aprobado' then update plone27_tareas set estado='validada' where id=p_tarea; end if;
+  return r;
+end $$;
+
+create or replace function plone27_tarea_pagar(p_bank uuid,p_tarea uuid,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare t plone27_tareas; tx uuid; begin
+  select * into t from plone27_tareas where id=p_tarea for update;
+  if t.id is null or not exists(select 1 from plone27_entidades e where e.account_id=t.entidad and e.bank_id=p_bank) then raise exception 'Tarea no encontrada'; end if;
+  if t.estado<>'validada' then raise exception 'Solo se pagan tareas validadas'; end if;
+  tx:=plone27_gasto_pagar(p_bank,t.gasto,p_actor);
+  update plone27_tareas set estado='pagada' where id=p_tarea;
+  return tx;
+end $$;
+
+create or replace function plone27_tarea_rechazar(p_bank uuid,p_tarea uuid,p_actor uuid,p_motivo text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare t plone27_tareas; begin
+  select * into t from plone27_tareas where id=p_tarea for update;
+  if t.id is null or not exists(select 1 from plone27_entidades e where e.account_id=t.entidad and e.bank_id=p_bank) then raise exception 'Tarea no encontrada'; end if;
+  if t.estado not in('registrada','validada') then raise exception 'Esta tarea ya no se puede rechazar'; end if;
+  perform plone27_gasto_rechazar(p_bank,t.gasto,p_actor,p_motivo);
+  update plone27_tareas set estado='rechazada' where id=p_tarea;
+end $$;
+
+-- ================= Nómina por periodo =================
+-- Paga todas las retribuciones fijas vigentes en el periodo (AAAA-MM). Una nómina ya pagada no se repite.
+-- Si un solo pago no tiene presupuesto, no se paga ninguno (la transacción se deshace).
+create or replace function plone27_nomina_periodo(p_bank uuid,p_cip text,p_actor uuid,p_periodo text) returns jsonb
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; ini date; fin date; ejer int; r plone27_retribuciones; unidad uuid; ben uuid; ref text; gid uuid; tx uuid; n int:=0; total numeric:=0; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if p_periodo is null or p_periodo !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' then raise exception 'Periodo no válido (AAAA-MM)'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'ejecutar') then raise exception 'Sin permiso para ejecutar nóminas'; end if;
+  ini:=to_date(p_periodo||'-01','YYYY-MM-DD');
+  fin:=(ini+interval '1 month'-interval '1 day')::date;
+  ejer:=extract(year from ini)::int;
+  for r in select x.* from plone27_retribuciones x
+           where x.entidad=ent and x.desde<=fin and (x.hasta is null or x.hasta>=ini) order by x.id loop
+    ref:='retribucion:'||r.id::text;
+    if exists(select 1 from plone27_nominas_pagadas np where np.persona=r.persona and np.periodo=p_periodo and np.referencia=ref) then
+      continue;
+    end if;
+    unidad:=plone27_puesto_de(r.persona,ent);
+    if unidad is null then raise exception 'Una persona con retribución no tiene puesto en la entidad'; end if;
+    ben:=plone27_cuenta_titular(r.persona,p_bank);
+    if ben is null then raise exception 'Una persona con retribución no tiene cuenta en la entidad'; end if;
+    if r.autorizada_por=p_actor then raise exception 'Quien autoriza una retribución no puede ejecutar la nómina'; end if;
+    perform plone27_verificar_presupuesto(unidad,ejer,r.importe);
+    tx:=plone27_transfer('nomina:'||p_periodo||':'||r.id::text,ent,ben,r.importe,'Nómina '||p_periodo,p_actor);
+    insert into plone27_gastos(entidad,unidad,ejercicio,importe,concepto,origen,beneficiario,propuesto_por,pagado_por,estado,tx,resuelto)
+      values(ent,unidad,ejer,r.importe,r.concepto||' '||p_periodo,'retribucion',ben,r.autorizada_por,p_actor,'pagado',tx,now())
+      returning plone27_gastos.id into gid;
+    insert into plone27_nominas_pagadas(persona,periodo,referencia,importe,gasto,tx)
+      values(r.persona,p_periodo,ref,r.importe,gid,tx);
+    n:=n+1; total:=total+r.importe;
+  end loop;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'nomina_periodo','account',ent::text,jsonb_build_object('periodo',p_periodo,'pagos',n,'total',total));
+  return jsonb_build_object('periodo',p_periodo,'pagos',n,'total',total);
+end $$;
+
+-- ================= Organigrama para la API (con comprobación de permisos y entidad) =================
+create or replace function plone27_arbol(p_bank uuid,p_cip text) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; resultado jsonb; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then return null; end if;
+  select jsonb_build_object('entidad',e.nombre,'cip',e.cip,
+    'unidades',(select coalesce(jsonb_agg(jsonb_build_object('id',u.id,'padre',u.padre,'tipo',u.tipo,'nombre',u.nombre,'codigo',u.codigo,'activa',u.activa) order by u.nombre),'[]'::jsonb)
+                from plone27_unidades u where u.entidad=ent),
+    'puestos',(select coalesce(jsonb_agg(jsonb_build_object('id',pu.id,'unidad',pu.unidad,'nombre',pu.nombre,'titulares_max',pu.titulares_max,'activo',pu.activo) order by pu.nombre),'[]'::jsonb)
+                from plone27_puestos pu join plone27_unidades u on u.id=pu.unidad where u.entidad=ent),
+    'nombramientos',(select coalesce(jsonb_agg(jsonb_build_object('dip',pe.dip,'puesto',n.puesto,'desde',n.desde) order by n.desde),'[]'::jsonb)
+                from plone27_nombramientos n join plone27_puestos pu on pu.id=n.puesto
+                join plone27_unidades u on u.id=pu.unidad join plone27_personas pe on pe.id=n.persona
+                where u.entidad=ent and n.hasta is null))
+  into resultado from plone27_entidades e where e.account_id=ent;
+  return resultado;
+end $$;
+
+-- Expediente de una persona en la entidad: puestos, retribuciones vigentes, tareas y nóminas pagadas
+create or replace function plone27_expediente(p_bank uuid,p_cip text,p_persona uuid) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then return null; end if;
+  return jsonb_build_object(
+    'puestos',(select coalesce(jsonb_agg(jsonb_build_object('puesto',pu.nombre,'unidad',u.nombre,'desde',n.desde) order by n.desde),'[]'::jsonb)
+               from plone27_nombramientos n join plone27_puestos pu on pu.id=n.puesto join plone27_unidades u on u.id=pu.unidad
+               where n.persona=p_persona and n.hasta is null and u.entidad=ent),
+    'retribuciones',(select coalesce(jsonb_agg(jsonb_build_object('concepto',r.concepto,'importe',r.importe,'desde',r.desde,'hasta',r.hasta) order by r.desde),'[]'::jsonb)
+               from plone27_retribuciones r where r.persona=p_persona and r.entidad=ent and (r.hasta is null or r.hasta>=current_date)),
+    'tareas',(select coalesce(jsonb_agg(to_jsonb(x)),'[]'::jsonb) from (
+               select t.id,t.concepto,t.importe,t.estado,t.referencia_externa as referencia from plone27_tareas t
+               where t.persona=p_persona and t.entidad=ent order by t.creada desc limit 50) x),
+    'nominas',(select coalesce(jsonb_agg(to_jsonb(y)),'[]'::jsonb) from (
+               select np.periodo,np.importe from plone27_nominas_pagadas np join plone27_gastos g on g.id=np.gasto
+               where np.persona=p_persona and g.entidad=ent order by np.periodo desc limit 24) y));
+end $$;
+
+-- ================= Organigrama con permisos (API de bancos) =================
+create or replace function plone27_org_unidad_nueva(p_bank uuid,p_cip text,p_actor uuid,p_tipo text,p_padre uuid,p_nombre text,p_codigo text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'organigrama') then raise exception 'Sin permiso para cambiar el organigrama'; end if;
+  if p_padre is not null and not exists(select 1 from plone27_unidades u where u.id=p_padre and u.entidad=ent and u.activa) then
+    raise exception 'Unidad superior no válida o cerrada';
+  end if;
+  return plone27_unidad_alta(ent,p_tipo,p_padre,p_nombre,p_codigo,p_actor);
+end $$;
+
+create or replace function plone27_org_puesto_nuevo(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_nombre text,p_titulares int) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'organigrama') then raise exception 'Sin permiso para cambiar el organigrama'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent and u.activa) then raise exception 'Unidad no válida o cerrada'; end if;
+  return plone27_puesto_alta(p_unidad,p_nombre,p_titulares,p_actor);
+end $$;
+
+create or replace function plone27_org_nombrar(p_bank uuid,p_cip text,p_actor uuid,p_puesto uuid,p_persona uuid,p_motivo text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'organigrama') then raise exception 'Sin permiso para cambiar el organigrama'; end if;
+  if not exists(select 1 from plone27_puestos pu join plone27_unidades u on u.id=pu.unidad where pu.id=p_puesto and u.entidad=ent) then
+    raise exception 'Puesto no encontrado en la entidad';
+  end if;
+  return plone27_nombrar(p_puesto,p_persona,p_motivo,p_actor);
+end $$;
+
+create or replace function plone27_org_cesar(p_bank uuid,p_cip text,p_actor uuid,p_nombramiento uuid,p_motivo text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'organigrama') then raise exception 'Sin permiso para cambiar el organigrama'; end if;
+  if not exists(select 1 from plone27_nombramientos n join plone27_puestos pu on pu.id=n.puesto
+                join plone27_unidades u on u.id=pu.unidad where n.id=p_nombramiento and u.entidad=ent) then
+    raise exception 'Nombramiento no encontrado en la entidad';
+  end if;
+  perform plone27_cesar(p_nombramiento,p_motivo,p_actor);
+end $$;
+
+create or replace function plone27_org_permiso(p_bank uuid,p_cip text,p_actor uuid,p_puesto uuid,p_accion text,p_limite numeric) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'organigrama') then raise exception 'Sin permiso para cambiar el organigrama'; end if;
+  if not exists(select 1 from plone27_puestos pu join plone27_unidades u on u.id=pu.unidad where pu.id=p_puesto and u.entidad=ent) then
+    raise exception 'Puesto no encontrado en la entidad';
+  end if;
+  insert into plone27_puesto_permisos(puesto,accion,limite) values(p_puesto,p_accion,p_limite)
+    on conflict(puesto,accion) do update set limite=excluded.limite;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'puesto_permiso','puesto',p_puesto::text,jsonb_build_object('accion',p_accion,'limite',p_limite));
+end $$;
+
+-- Permisos de puesto para el personal del banco (arranque del sistema). No se expone a las APIs.
+create or replace function plone27_puesto_permiso_fijar_staff(p_puesto uuid,p_accion text,p_limite numeric,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  insert into plone27_puesto_permisos(puesto,accion,limite) values(p_puesto,p_accion,p_limite)
+    on conflict(puesto,accion) do update set limite=excluded.limite;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'puesto_permiso_staff','puesto',p_puesto::text,jsonb_build_object('accion',p_accion,'limite',p_limite));
+end $$;
+
+create or replace function plone27_org_cerrar_unidad(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_motivo text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  if not plone27_puede(p_actor,p_unidad,'cerrar',null) then raise exception 'Sin permiso para cerrar esta unidad'; end if;
+  if exists(select 1 from plone27_gastos g where g.estado in('propuesto','aprobado')
+            and g.unidad in (select d.id from plone27_descendientes(p_unidad) d)) then
+    raise exception 'Hay gastos pendientes o comprometidos en esta unidad';
+  end if;
+  update plone27_unidades set activa=false where id=p_unidad;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'unidad_cerrada','unidad',p_unidad::text,jsonb_build_object('motivo',p_motivo));
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0028_plone27_fondos_recurrentes_solicitudes.sql) ====================
+-- Placeta One · 0028 · Cuenta institucional (completar): fondos restringidos, presupuestos mensuales y plurianuales,
+-- pagos recurrentes, convocatorias internas, solicitudes de unidades (activables por la entidad) y eventos de webhook
+-- para gastos, tareas y nóminas. Requiere 0027. Idempotente.
+
+alter table plone27_entidades add column if not exists solicitudes_activas boolean not null default false;
+alter table plone27_gastos add column if not exists fecha date not null default current_date;
+
+-- ---------- Fondos restringidos a una finalidad ----------
+create table if not exists plone27_fondos(
+  id uuid primary key default gen_random_uuid(),
+  unidad uuid not null references plone27_unidades(id),
+  nombre text not null check(length(nombre) between 2 and 120),
+  finalidad text not null check(length(finalidad) between 5 and 300),
+  importe numeric(18,2) not null check(importe>0),
+  activo boolean not null default true,
+  creado timestamptz not null default now(),
+  unique(unidad,nombre));
+alter table plone27_gastos add column if not exists fondo uuid references plone27_fondos(id);
+
+-- ---------- Presupuesto mensual (reparto del anual) y plan plurianual (sobre de varios años) ----------
+create table if not exists plone27_presupuesto_meses(
+  unidad uuid not null references plone27_unidades(id),
+  ejercicio int not null check(ejercicio between 2000 and 2100),
+  mes int not null check(mes between 1 and 12),
+  importe numeric(18,2) not null check(importe>=0),
+  primary key(unidad,ejercicio,mes));
+
+create table if not exists plone27_planes_plurianuales(
+  id uuid primary key default gen_random_uuid(),
+  unidad uuid not null references plone27_unidades(id),
+  nombre text not null check(length(nombre) between 2 and 120),
+  ejercicio_inicio int not null check(ejercicio_inicio between 2000 and 2100),
+  ejercicio_fin int not null check(ejercicio_fin between 2000 and 2100),
+  total numeric(18,2) not null check(total>0),
+  creado timestamptz not null default now(),
+  check(ejercicio_fin>=ejercicio_inicio and ejercicio_fin-ejercicio_inicio<=9));
+
+-- ---------- Pagos recurrentes autorizados ----------
+create table if not exists plone27_recurrentes(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  unidad uuid not null references plone27_unidades(id),
+  concepto text not null check(length(concepto) between 3 and 200),
+  importe numeric(18,2) not null check(importe>0),
+  beneficiario uuid references plone27_accounts,
+  periodicidad_meses int not null check(periodicidad_meses between 1 and 12),
+  desde date not null,
+  hasta date,
+  autorizada_por uuid not null references plone27_personas,
+  activo boolean not null default true,
+  creada timestamptz not null default now(),
+  check(hasta is null or hasta>=desde));
+
+create table if not exists plone27_recurrentes_generados(
+  recurrente uuid not null references plone27_recurrentes(id),
+  periodo text not null check(periodo ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+  gasto uuid references plone27_gastos(id),
+  primary key(recurrente,periodo));
+
+-- ---------- Convocatorias internas y solicitudes de unidades ----------
+create table if not exists plone27_convocatorias(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  nombre text not null check(length(nombre) between 3 and 120),
+  importe numeric(18,2) not null check(importe>0),
+  desde date not null,
+  hasta date not null,
+  estado text not null default 'abierta' check(estado in('abierta','cerrada')),
+  creada timestamptz not null default now(),
+  check(hasta>=desde));
+
+create table if not exists plone27_solicitudes_unidad(
+  id uuid primary key default gen_random_uuid(),
+  entidad uuid not null references plone27_entidades(account_id),
+  unidad uuid not null references plone27_unidades(id),
+  tipo text not null check(tipo in('ampliacion','prorroga','reserva_extra','financiacion','otra')),
+  importe numeric(18,2) check(importe is null or importe>0),
+  referencia uuid,
+  convocatoria uuid references plone27_convocatorias(id),
+  nueva_fecha date,
+  justificacion text not null check(length(justificacion) between 20 and 1000),
+  estado text not null default 'pendiente' check(estado in('pendiente','concedida','denegada')),
+  solicitada_por uuid not null references plone27_personas,
+  resuelta_por uuid references plone27_personas,
+  resolucion text check(resolucion is null or length(resolucion)<=500),
+  creada timestamptz not null default now(),
+  resuelta timestamptz,
+  check(resuelta_por is null or resuelta_por<>solicitada_por));
+
+-- ================= Reglas automáticas (disparadores) =================
+
+-- Reparto mensual: no puede superar el anual
+create or replace function plone27_trg_mes_valido() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare anual numeric; suma numeric; begin
+  select p.anual into anual from plone27_presupuestos p where p.unidad=new.unidad and p.ejercicio=new.ejercicio;
+  if anual is null then raise exception 'Primero hay que fijar el presupuesto anual de la unidad'; end if;
+  select coalesce(sum(m.importe),0) into suma from plone27_presupuesto_meses m
+    where m.unidad=new.unidad and m.ejercicio=new.ejercicio and m.mes<>new.mes;
+  if suma+new.importe>anual then raise exception 'El reparto mensual supera el presupuesto anual (%)', anual; end if;
+  return new;
+end $$;
+drop trigger if exists trg_mes_valido on plone27_presupuesto_meses;
+drop trigger if exists trg_mes_valido on plone27_presupuesto_meses;
+create trigger trg_mes_valido before insert or update on plone27_presupuesto_meses
+  for each row execute function plone27_trg_mes_valido();
+
+-- Cambiar el anual no puede dejar por debajo el reparto mensual ni el sobre de un plan plurianual
+create or replace function plone27_trg_presupuesto_coherente() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare suma_meses numeric; suma_plan numeric; pl record; begin
+  select coalesce(sum(m.importe),0) into suma_meses from plone27_presupuesto_meses m
+    where m.unidad=new.unidad and m.ejercicio=new.ejercicio;
+  if suma_meses>new.anual then raise exception 'El reparto mensual (%) supera el nuevo presupuesto anual', suma_meses; end if;
+  for pl in select x.* from plone27_planes_plurianuales x
+            where x.unidad=new.unidad and new.ejercicio between x.ejercicio_inicio and x.ejercicio_fin loop
+    select coalesce(sum(p.anual),0) into suma_plan from plone27_presupuestos p
+      where p.unidad=new.unidad and p.ejercicio between pl.ejercicio_inicio and pl.ejercicio_fin;
+    if suma_plan>pl.total then raise exception 'El plan plurianual "%" supera su total (%)', pl.nombre, pl.total; end if;
+  end loop;
+  return new;
+end $$;
+drop trigger if exists trg_presupuesto_coherente on plone27_presupuestos;
+drop trigger if exists trg_presupuesto_coherente on plone27_presupuestos;
+create trigger trg_presupuesto_coherente after insert or update on plone27_presupuestos
+  for each row execute function plone27_trg_presupuesto_coherente();
+
+-- Al aprobar un gasto: saldo del fondo y saldo del mes (si hay presupuesto mensual)
+create or replace function plone27_trg_gasto_saldos() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare fmax numeric; usado numeric; mes_b numeric; usado_mes numeric; mes int; begin
+  if new.estado<>'aprobado' or old.estado='aprobado' then return new; end if;
+  if new.fondo is not null then
+    select f.importe into fmax from plone27_fondos f where f.id=new.fondo;
+    select coalesce(sum(g.importe),0) into usado from plone27_gastos g
+      where g.fondo=new.fondo and g.estado in('aprobado','pagado') and g.id<>new.id;
+    if usado+new.importe>fmax then raise exception 'El fondo no tiene saldo suficiente (disponible: %)', fmax-usado; end if;
+  end if;
+  mes:=extract(month from new.fecha)::int;
+  select m.importe into mes_b from plone27_presupuesto_meses m
+    where m.unidad=new.unidad and m.ejercicio=new.ejercicio and m.mes=mes;
+  if mes_b is not null then
+    select coalesce(sum(g.importe),0) into usado_mes from plone27_gastos g
+      where g.unidad=new.unidad and g.ejercicio=new.ejercicio and extract(month from g.fecha)::int=mes
+        and g.estado in('aprobado','pagado') and g.id<>new.id;
+    if usado_mes+new.importe>mes_b then raise exception 'Presupuesto del mes insuficiente (disponible: %)', mes_b-usado_mes; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_gasto_saldos on plone27_gastos;
+drop trigger if exists trg_gasto_saldos on plone27_gastos;
+create trigger trg_gasto_saldos before update of estado on plone27_gastos
+  for each row execute function plone27_trg_gasto_saldos();
+
+-- Eventos de webhook: gastos, tareas y nóminas
+create or replace function plone27_trg_evento_gasto() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare bk uuid; begin
+  if tg_op='UPDATE' and new.estado=old.estado then return new; end if;
+  select e.bank_id into bk from plone27_entidades e where e.account_id=new.entidad;
+  insert into plone27_outbox(event,bank_ids,payload) values('gasto.'||new.estado,array[bk],
+    jsonb_build_object('gasto',new.id,'unidad',new.unidad,'ejercicio',new.ejercicio,'importe',new.importe,
+      'concepto',new.concepto,'origen',new.origen,'estado',new.estado));
+  return new;
+end $$;
+drop trigger if exists trg_evento_gasto on plone27_gastos;
+drop trigger if exists trg_evento_gasto on plone27_gastos;
+create trigger trg_evento_gasto after insert or update of estado on plone27_gastos
+  for each row execute function plone27_trg_evento_gasto();
+
+create or replace function plone27_trg_evento_tarea() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare bk uuid; dni text; begin
+  if tg_op='UPDATE' and new.estado=old.estado then return new; end if;
+  select e.bank_id into bk from plone27_entidades e where e.account_id=new.entidad;
+  select p.dip into dni from plone27_personas p where p.id=new.persona;
+  insert into plone27_outbox(event,bank_ids,payload) values('tarea.'||new.estado,array[bk],
+    jsonb_build_object('tarea',new.id,'referencia',new.referencia_externa,'dip',dni,'concepto',new.concepto,
+      'importe',new.importe,'estado',new.estado));
+  return new;
+end $$;
+drop trigger if exists trg_evento_tarea on plone27_tareas;
+drop trigger if exists trg_evento_tarea on plone27_tareas;
+create trigger trg_evento_tarea after insert or update of estado on plone27_tareas
+  for each row execute function plone27_trg_evento_tarea();
+
+create or replace function plone27_trg_evento_nomina() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare bk uuid; ent uuid; dni text; begin
+  select g.entidad into ent from plone27_gastos g where g.id=new.gasto;
+  select e.bank_id into bk from plone27_entidades e where e.account_id=ent;
+  select p.dip into dni from plone27_personas p where p.id=new.persona;
+  insert into plone27_outbox(event,bank_ids,payload) values('nomina.pagada',array[bk],
+    jsonb_build_object('dip',dni,'periodo',new.periodo,'importe',new.importe,'referencia',new.referencia,'gasto',new.gasto));
+  return new;
+end $$;
+drop trigger if exists trg_evento_nomina on plone27_nominas_pagadas;
+drop trigger if exists trg_evento_nomina on plone27_nominas_pagadas;
+create trigger trg_evento_nomina after insert on plone27_nominas_pagadas
+  for each row execute function plone27_trg_evento_nomina();
+
+-- ================= Funciones de gestión =================
+
+create or replace function plone27_entidad_config(p_bank uuid,p_cip text,p_actor uuid,p_solicitudes boolean,p_doble_firma numeric) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'presupuestar') then raise exception 'Sin permiso para configurar la entidad'; end if;
+  update plone27_entidades set solicitudes_activas=coalesce(p_solicitudes,false), doble_firma_desde=p_doble_firma where account_id=ent;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'entidad_config','account',ent::text,jsonb_build_object('solicitudes',p_solicitudes,'doble_firma',p_doble_firma));
+end $$;
+
+create or replace function plone27_presupuesto_mes_fijar(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_ejercicio int,p_mes int,p_importe numeric) returns numeric
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  if not plone27_puede(p_actor,p_unidad,'presupuestar',p_importe) then raise exception 'Sin permiso para presupuestar esta unidad'; end if;
+  insert into plone27_presupuesto_meses(unidad,ejercicio,mes,importe) values(p_unidad,p_ejercicio,p_mes,p_importe)
+    on conflict(unidad,ejercicio,mes) do update set importe=excluded.importe;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'presupuesto_mes','unidad',p_unidad::text,jsonb_build_object('ejercicio',p_ejercicio,'mes',p_mes,'importe',p_importe));
+  return p_importe;
+end $$;
+
+create or replace function plone27_plan_plurianual_crear(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_nombre text,p_inicio int,p_fin int,p_total numeric) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; ya numeric; pid uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  if not plone27_puede(p_actor,p_unidad,'presupuestar',p_total) then raise exception 'Sin permiso para presupuestar esta unidad'; end if;
+  select coalesce(sum(p.anual),0) into ya from plone27_presupuestos p
+    where p.unidad=p_unidad and p.ejercicio between p_inicio and p_fin;
+  if ya>p_total then raise exception 'Los presupuestos anuales ya suman % en esos años', ya; end if;
+  insert into plone27_planes_plurianuales(unidad,nombre,ejercicio_inicio,ejercicio_fin,total)
+    values(p_unidad,p_nombre,p_inicio,p_fin,p_total) returning plone27_planes_plurianuales.id into pid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'plan_plurianual','unidad',p_unidad::text,jsonb_build_object('plan',pid,'total',p_total));
+  return pid;
+end $$;
+
+create or replace function plone27_fondo_crear(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_nombre text,p_finalidad text,p_importe numeric) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; fid uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent) then raise exception 'Unidad no encontrada en la entidad'; end if;
+  if not plone27_puede(p_actor,p_unidad,'presupuestar',p_importe) then raise exception 'Sin permiso para crear fondos en esta unidad'; end if;
+  insert into plone27_fondos(unidad,nombre,finalidad,importe) values(p_unidad,p_nombre,p_finalidad,p_importe)
+    returning plone27_fondos.id into fid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'fondo_crear','unidad',p_unidad::text,jsonb_build_object('fondo',fid,'importe',p_importe));
+  return fid;
+end $$;
+
+-- Asigna un fondo a un gasto propuesto. Solo quien propone el gasto, y el fondo debe ser de su unidad o de una superior.
+create or replace function plone27_gasto_asignar_fondo(p_bank uuid,p_gasto uuid,p_actor uuid,p_fondo uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare g plone27_gastos; begin
+  select * into g from plone27_gastos where id=p_gasto for update;
+  if g.id is null or not exists(select 1 from plone27_entidades e where e.account_id=g.entidad and e.bank_id=p_bank) then
+    raise exception 'Gasto no encontrado';
+  end if;
+  if g.estado<>'propuesto' then raise exception 'Solo se puede asignar fondo a un gasto propuesto'; end if;
+  if p_actor<>g.propuesto_por then raise exception 'Solo quien propone el gasto puede asignarle un fondo'; end if;
+  if not exists(select 1 from plone27_fondos f where f.id=p_fondo and f.activo and f.unidad in (select a.id from plone27_ancestros(g.unidad) a)) then
+    raise exception 'Fondo no disponible para esta unidad';
+  end if;
+  update plone27_gastos set fondo=p_fondo where id=p_gasto;
+end $$;
+
+create or replace function plone27_recurrente_crear(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_concepto text,p_importe numeric,p_iban text,p_meses int,p_desde date,p_hasta date) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; ben uuid; rid uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent and u.activa) then raise exception 'Unidad no válida o cerrada'; end if;
+  if not plone27_puede(p_actor,p_unidad,'aprobar',p_importe) then raise exception 'Sin permiso para autorizar pagos recurrentes en esta unidad'; end if;
+  if coalesce(p_iban,'')<>'' then
+    select a.id into ben from plone27_accounts a where a.iban=p_iban and a.bank_id=p_bank and a.status='active';
+    if ben is null then raise exception 'Cuenta beneficiaria no válida'; end if;
+  end if;
+  insert into plone27_recurrentes(entidad,unidad,concepto,importe,beneficiario,periodicidad_meses,desde,hasta,autorizada_por)
+    values(ent,p_unidad,p_concepto,p_importe,ben,p_meses,p_desde,p_hasta,p_actor) returning plone27_recurrentes.id into rid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'recurrente_crear','unidad',p_unidad::text,jsonb_build_object('recurrente',rid,'importe',p_importe));
+  return rid;
+end $$;
+
+-- Genera las propuestas de gasto de los pagos recurrentes que tocan en el periodo (AAAA-MM).
+-- Cada propuesta sigue su flujo normal: aprobación por otra persona, presupuesto y pago.
+create or replace function plone27_recurrentes_generar(p_bank uuid,p_cip text,p_actor uuid,p_periodo text) returns int
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; ini date; fin date; meses_desde int; meses_periodo int; r plone27_recurrentes; gid uuid; n int:=0; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if p_periodo is null or p_periodo !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' then raise exception 'Periodo no válido (AAAA-MM)'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'aprobar') then raise exception 'Sin permiso para generar pagos recurrentes'; end if;
+  ini:=to_date(p_periodo||'-01','YYYY-MM-DD');
+  fin:=(ini+interval '1 month'-interval '1 day')::date;
+  meses_periodo:=extract(year from ini)::int*12+extract(month from ini)::int;
+  for r in select x.* from plone27_recurrentes x
+           where x.entidad=ent and x.activo and x.desde<=fin and (x.hasta is null or x.hasta>=ini) order by x.id loop
+    meses_desde:=extract(year from r.desde)::int*12+extract(month from r.desde)::int;
+    if (meses_periodo-meses_desde)<0 or (meses_periodo-meses_desde)%r.periodicidad_meses<>0 then continue; end if;
+    if exists(select 1 from plone27_recurrentes_generados rg where rg.recurrente=r.id and rg.periodo=p_periodo) then continue; end if;
+    insert into plone27_gastos(entidad,unidad,ejercicio,importe,concepto,origen,beneficiario,propuesto_por,fecha)
+      values(ent,r.unidad,extract(year from ini)::int,r.importe,r.concepto,'manual',r.beneficiario,r.autorizada_por,ini)
+      returning plone27_gastos.id into gid;
+    insert into plone27_recurrentes_generados(recurrente,periodo,gasto) values(r.id,p_periodo,gid);
+    n:=n+1;
+  end loop;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'recurrentes_generar','account',ent::text,jsonb_build_object('periodo',p_periodo,'propuestas',n));
+  return n;
+end $$;
+
+create or replace function plone27_convocatoria_crear(p_bank uuid,p_cip text,p_actor uuid,p_nombre text,p_importe numeric,p_desde date,p_hasta date) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; cid uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  if not plone27_tiene_en_entidad(p_actor,ent,'presupuestar') then raise exception 'Sin permiso para abrir convocatorias'; end if;
+  insert into plone27_convocatorias(entidad,nombre,importe,desde,hasta) values(ent,p_nombre,p_importe,p_desde,p_hasta)
+    returning plone27_convocatorias.id into cid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'convocatoria_crear','account',ent::text,jsonb_build_object('convocatoria',cid,'importe',p_importe));
+  return cid;
+end $$;
+
+-- Solicitud de una unidad. Solo si la entidad tiene activadas las solicitudes.
+create or replace function plone27_solicitud_crear(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_tipo text,p_importe numeric,p_referencia uuid,p_nueva_fecha date,p_justificacion text,p_convocatoria uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ent uuid; activas boolean; sid uuid; begin
+  ent:=plone27_entidad_de(p_bank,p_cip);
+  if ent is null then raise exception 'Entidad no encontrada'; end if;
+  select e.solicitudes_activas into activas from plone27_entidades e where e.account_id=ent;
+  if not activas then raise exception 'Las solicitudes no están activadas en esta entidad'; end if;
+  if not exists(select 1 from plone27_unidades u where u.id=p_unidad and u.entidad=ent and u.activa) then raise exception 'Unidad no válida o cerrada'; end if;
+  if not plone27_puede(p_actor,p_unidad,'proponer',p_importe) then raise exception 'Sin permiso para solicitar en esta unidad'; end if;
+  if p_tipo='ampliacion' and coalesce(p_importe,0)<=0 then raise exception 'La ampliación necesita un importe'; end if;
+  if p_tipo='reserva_extra' and (p_referencia is null or coalesce(p_importe,0)<=0) then raise exception 'La reserva extra necesita un fondo y un importe'; end if;
+  if p_tipo='prorroga' and (p_nueva_fecha is null or p_referencia is null) then raise exception 'La prórroga necesita la fecha nueva y el elemento a prorrogar'; end if;
+  if p_tipo='financiacion' and p_convocatoria is null then raise exception 'La financiación necesita una convocatoria'; end if;
+  insert into plone27_solicitudes_unidad(entidad,unidad,tipo,importe,referencia,convocatoria,nueva_fecha,justificacion,solicitada_por)
+    values(ent,p_unidad,p_tipo,p_importe,p_referencia,p_convocatoria,p_nueva_fecha,p_justificacion,p_actor)
+    returning plone27_solicitudes_unidad.id into sid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'solicitud_crear','unidad',p_unidad::text,jsonb_build_object('solicitud',sid,'tipo',p_tipo));
+  return sid;
+end $$;
+
+-- Resolver una solicitud: quien decide necesita permiso de presupuesto y no puede ser quien la pidió.
+create or replace function plone27_solicitud_resolver(p_bank uuid,p_solicitud uuid,p_actor uuid,p_decision text,p_resolucion text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare s plone27_solicitudes_unidad; cip text; asig numeric; conv plone27_convocatorias; conc numeric; ejer int; begin
+  select * into s from plone27_solicitudes_unidad where id=p_solicitud for update;
+  if s.id is null or not exists(select 1 from plone27_entidades e where e.account_id=s.entidad and e.bank_id=p_bank) then
+    raise exception 'Solicitud no encontrada';
+  end if;
+  if s.estado<>'pendiente' then raise exception 'La solicitud ya está resuelta'; end if;
+  if p_actor=s.solicitada_por then raise exception 'Nadie puede resolver su propia solicitud'; end if;
+  if p_decision not in('concedida','denegada') then raise exception 'Decisión no válida'; end if;
+  if not plone27_puede(p_actor,s.unidad,'presupuestar',s.importe) then raise exception 'Sin permiso para resolver solicitudes de esta unidad'; end if;
+  ejer:=extract(year from current_date)::int;
+  if p_decision='concedida' then
+    select e.cip into cip from plone27_entidades e where e.account_id=s.entidad;
+    if s.tipo='ampliacion' then
+      select coalesce((select p.anual from plone27_presupuestos p where p.unidad=s.unidad and p.ejercicio=ejer),0) into asig;
+      perform plone27_presupuesto_fijar(p_bank,cip,p_actor,s.unidad,ejer,asig+s.importe);
+    elsif s.tipo='reserva_extra' then
+      update plone27_fondos set importe=importe+s.importe where id=s.referencia and unidad=s.unidad;
+      if not found then raise exception 'El fondo no pertenece a la unidad de la solicitud'; end if;
+    elsif s.tipo='prorroga' then
+      if exists(select 1 from plone27_convocatorias c where c.id=s.referencia and c.entidad=s.entidad) then
+        update plone27_convocatorias set hasta=s.nueva_fecha where id=s.referencia;
+      elsif exists(select 1 from plone27_recurrentes r where r.id=s.referencia and r.entidad=s.entidad) then
+        update plone27_recurrentes set hasta=s.nueva_fecha where id=s.referencia;
+      else
+        raise exception 'El elemento a prorrogar no existe en la entidad';
+      end if;
+    elsif s.tipo='financiacion' then
+      select * into conv from plone27_convocatorias where id=s.convocatoria for update;
+      if conv.id is null or conv.estado<>'abierta' then raise exception 'La convocatoria no está abierta'; end if;
+      select coalesce(sum(x.importe),0) into conc from plone27_solicitudes_unidad x
+        where x.convocatoria=conv.id and x.estado='concedida';
+      if conc+s.importe>conv.importe then raise exception 'La convocatoria no tiene fondos suficientes (disponible: %)', conv.importe-conc; end if;
+      select coalesce((select p.anual from plone27_presupuestos p where p.unidad=s.unidad and p.ejercicio=ejer),0) into asig;
+      perform plone27_presupuesto_fijar(p_bank,cip,p_actor,s.unidad,ejer,asig+s.importe);
+    end if;
+  end if;
+  update plone27_solicitudes_unidad set estado=p_decision, resuelta_por=p_actor, resolucion=p_resolucion, resuelta=now() where id=p_solicitud;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'solicitud_resuelta','unidad',s.unidad::text,jsonb_build_object('solicitud',p_solicitud,'decision',p_decision));
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
 -- ==================== DATOS DE LA NORMA Y CUENTAS (0011_seed_norma_tributos_2027.sql) ====================
 -- Placeta One · seed 0011 · Norma de tributos (Código Normativo | Tributos, Junta 26/09/2026)
 -- Ejecutar en staging y luego en producción, DESPUÉS de la migración 0011. No va en CI (acceptance.sql usa IGF e IRM).

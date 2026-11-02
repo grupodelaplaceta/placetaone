@@ -3351,6 +3351,635 @@
         ],
         "x-grupo": "Pasarela de pago"
       }
+    },
+    "/api/v1/bk/organigrama": {
+      "get": {
+        "summary": "Árbol del organigrama de una entidad institucional",
+        "x-permiso": "organigrama:leer",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "entidad": "Grupo de La Placeta",
+                  "cip": "CIP-00000001",
+                  "unidades": [
+                    {
+                      "id": "7c1e9b2a-0001-4a6b-9e8c-000000000001",
+                      "padre": null,
+                      "tipo": "administracion",
+                      "nombre": "Administración",
+                      "codigo": "ADM",
+                      "activa": true
+                    },
+                    {
+                      "id": "7c1e9b2a-0002-4a6b-9e8c-000000000002",
+                      "padre": "7c1e9b2a-0001-4a6b-9e8c-000000000001",
+                      "tipo": "departamento",
+                      "nombre": "Comunicaciones",
+                      "codigo": "COM",
+                      "activa": true
+                    }
+                  ],
+                  "puestos": [
+                    {
+                      "id": "7c1e9b2a-0003-4a6b-9e8c-000000000003",
+                      "unidad": "7c1e9b2a-0002-4a6b-9e8c-000000000002",
+                      "nombre": "Director de Comunicaciones",
+                      "titulares_max": 1,
+                      "activo": true
+                    }
+                  ],
+                  "nombramientos": [
+                    {
+                      "dip": "12345678Z",
+                      "puesto": "7c1e9b2a-0003-4a6b-9e8c-000000000003",
+                      "desde": "2026-09-01"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entidad no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "cip",
+            "in": "query",
+            "required": true,
+            "description": "CIP de la entidad (CIP-00000001)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Cambiar el organigrama: unidad, puesto, nombrar, cesar, permiso o cerrar_unidad",
+        "x-permiso": "organigrama:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Nombramiento creado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "nombramiento": "7c1e9b2a-0004-4a6b-9e8c-000000000004"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sin permiso para cambiar el organigrama / el puesto está completo"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "accion": "nombrar",
+                "cip": "CIP-00000001",
+                "dip_actor": "12345678Z",
+                "dip": "87654321X",
+                "puesto": "7c1e9b2a-0003-4a6b-9e8c-000000000003",
+                "motivo": "Nombramiento tras convocatoria interna"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/presupuestos": {
+      "get": {
+        "summary": "Informe de una unidad: presupuesto, comprometido, pagado y disponible",
+        "x-permiso": "presupuestos:leer",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "unidad": "7c1e9b2a-0002-4a6b-9e8c-000000000002",
+                  "ejercicio": 2027,
+                  "anual": 45000,
+                  "gastado": 21400,
+                  "pagado": 16200,
+                  "pendiente_aprobacion": 3100,
+                  "disponible": 23600,
+                  "unidades_inferiores": [
+                    {
+                      "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+                      "nombre": "Radio La Placeta",
+                      "tipo": "proyecto",
+                      "anual": 15000,
+                      "gastado": 9800
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cip",
+            "in": "query",
+            "required": true,
+            "description": "CIP de la entidad",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unidad",
+            "in": "query",
+            "required": true,
+            "description": "Identificador de la unidad",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ejercicio",
+            "in": "query",
+            "required": false,
+            "description": "Año (AAAA)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "summary": "Fijar el presupuesto anual de una unidad o el general de la entidad",
+        "x-permiso": "presupuestos:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "presupuesto": 45000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sin permiso / las unidades inferiores superan este presupuesto / por debajo de lo comprometido"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "dip_actor": "12345678Z",
+                "unidad": "7c1e9b2a-0002-4a6b-9e8c-000000000002",
+                "ejercicio": 2027,
+                "importe": 45000
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/presupuestos/reasignaciones": {
+      "post": {
+        "summary": "Mover presupuesto entre dos unidades con la misma unidad superior",
+        "x-permiso": "presupuestos:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "reasignado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Disponible insuficiente / unidades con distinta unidad superior"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "dip_actor": "12345678Z",
+                "desde": "7c1e9b2a-0002-4a6b-9e8c-000000000002",
+                "hasta": "7c1e9b2a-0006-4a6b-9e8c-000000000006",
+                "ejercicio": 2027,
+                "importe": 5000,
+                "motivo": "Ajuste entre proyectos de comunicación"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/gastos": {
+      "post": {
+        "summary": "Proponer un gasto a cargo de una unidad",
+        "x-permiso": "gastos:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Gasto propuesto",
+            "content": {
+              "application/json": {
+                "example": {
+                  "gasto": "9a3d2c1e-0010-4b7c-8d9e-000000000010"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sin permiso para proponer / cuenta beneficiaria no válida / unidad cerrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "dip_actor": "87654321X",
+                "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+                "ejercicio": 2027,
+                "importe": 1200,
+                "concepto": "Campaña de radio octubre",
+                "beneficiario_iban": "PZ-0001-0009"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/gastos/{id}/accion": {
+      "post": {
+        "summary": "Aprobar, rechazar o pagar un gasto",
+        "x-permiso": "gastos:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "resultado": "aprobado"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Presupuesto insuficiente / no puede aprobar su propio gasto / sin permiso"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador del gasto",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "accion": "aprobar",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "description": "Para importes por encima de la doble firma, la primera aprobación devuelve resultado «pendiente_segunda_firma». El pago lo ejecuta una persona distinta de quien propone y aprueba."
+      }
+    },
+    "/api/v1/bk/tareas": {
+      "post": {
+        "summary": "Registrar una tarea que genera un complemento (para apps como NEXE)",
+        "x-permiso": "tareas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Tarea registrada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "tarea": "5e0f1a2b-0011-4c8d-9e0f-000000000011"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La persona no tiene puesto o cuenta en la entidad / unidad cerrada"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "dip": "87654321X",
+                "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+                "concepto": "Locución de programa especial",
+                "importe": 60,
+                "referencia_externa": "NEXE-TAREA-000981"
+              }
+            }
+          }
+        },
+        "description": "La referencia externa es única: repetir la misma petición devuelve la tarea existente."
+      }
+    },
+    "/api/v1/bk/tareas/{id}/accion": {
+      "post": {
+        "summary": "Validar, pagar o rechazar una tarea",
+        "x-permiso": "tareas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "resultado": "aprobado"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La tarea no está pendiente / sin permiso para validar"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la tarea",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "accion": "validar",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/retribuciones": {
+      "post": {
+        "summary": "Fijar una retribución fija o un complemento autorizado",
+        "x-permiso": "retribuciones:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Retribución fijada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "retribucion": "3b8c7d6e-0012-4e9f-8a1b-000000000012"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sin permiso para retribuir / quien autoriza es la misma persona"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "dip": "87654321X",
+                "dip_actor": "12345678Z",
+                "concepto": "Retribución fija",
+                "importe": 2400,
+                "desde": "2027-01-01",
+                "motivo": "Contrato indefinido de coordinación"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/expedientes": {
+      "get": {
+        "summary": "Expediente de una persona en la entidad: puestos, retribuciones, tareas y nóminas",
+        "x-permiso": "retribuciones:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "puestos": [
+                    {
+                      "puesto": "Director de Comunicaciones",
+                      "unidad": "Comunicaciones",
+                      "desde": "2026-09-01"
+                    }
+                  ],
+                  "retribuciones": [
+                    {
+                      "concepto": "Retribución fija",
+                      "importe": 2400,
+                      "desde": "2027-01-01",
+                      "hasta": null
+                    }
+                  ],
+                  "tareas": [
+                    {
+                      "id": "5e0f1a2b-0011-4c8d-9e0f-000000000011",
+                      "concepto": "Locución de programa especial",
+                      "importe": 60,
+                      "estado": "validada",
+                      "referencia": "NEXE-TAREA-000981"
+                    }
+                  ],
+                  "nominas": [
+                    {
+                      "periodo": "2026-10",
+                      "importe": 2400
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entidad no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "cip",
+            "in": "query",
+            "required": true,
+            "description": "CIP de la entidad",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dip",
+            "in": "query",
+            "required": true,
+            "description": "DIP de la persona",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/nominas/periodos": {
+      "post": {
+        "summary": "Generar y pagar la nómina de un periodo",
+        "x-permiso": "nominas:generar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nómina pagada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "periodo": "2027-01",
+                  "pagos": 12,
+                  "total": 24100
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Sin permiso para ejecutar nóminas / falta presupuesto en una unidad (no se paga ninguno)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "periodo": "2027-01",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "description": "Una nómina ya pagada no se repite. Quien autoriza una retribución no puede ejecutar la nómina."
+      }
     }
   },
   "x-webhooks": {
@@ -3402,6 +4031,144 @@
           "operation": "OP-2026-004412",
           "transfer": "TRF-2026-004412",
           "kind": "transfer"
+        }
+      }
+    },
+    "gasto.propuesto": {
+      "description": "Se ha propuesto un gasto (manual, de tarea o de un pago recurrente). Pendiente de aprobación por otra persona.",
+      "example": {
+        "id": 1051,
+        "event": "gasto.propuesto",
+        "data": {
+          "gasto": "9a3d2c1e-0010-4b7c-8d9e-000000000010",
+          "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+          "ejercicio": 2027,
+          "importe": 1200,
+          "concepto": "Campaña de radio octubre",
+          "origen": "manual",
+          "estado": "propuesto"
+        }
+      }
+    },
+    "gasto.aprobado": {
+      "description": "Un gasto ha quedado aprobado y reserva presupuesto en su unidad y superiores.",
+      "example": {
+        "id": 1052,
+        "event": "gasto.aprobado",
+        "data": {
+          "gasto": "9a3d2c1e-0010-4b7c-8d9e-000000000010",
+          "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+          "ejercicio": 2027,
+          "importe": 1200,
+          "concepto": "Campaña de radio octubre",
+          "origen": "manual",
+          "estado": "aprobado"
+        }
+      }
+    },
+    "gasto.rechazado": {
+      "description": "Un gasto propuesto o aprobado ha sido rechazado. Libera el presupuesto reservado.",
+      "example": {
+        "id": 1053,
+        "event": "gasto.rechazado",
+        "data": {
+          "gasto": "9a3d2c1e-0010-4b7c-8d9e-000000000010",
+          "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+          "ejercicio": 2027,
+          "importe": 1200,
+          "concepto": "Campaña de radio octubre",
+          "origen": "manual",
+          "estado": "rechazado"
+        }
+      }
+    },
+    "gasto.pagado": {
+      "description": "Un gasto aprobado se ha pagado desde la cuenta de la entidad.",
+      "example": {
+        "id": 1054,
+        "event": "gasto.pagado",
+        "data": {
+          "gasto": "9a3d2c1e-0010-4b7c-8d9e-000000000010",
+          "unidad": "7c1e9b2a-0005-4a6b-9e8c-000000000005",
+          "ejercicio": 2027,
+          "importe": 1200,
+          "concepto": "Campaña de radio octubre",
+          "origen": "manual",
+          "estado": "pagado"
+        }
+      }
+    },
+    "tarea.registrada": {
+      "description": "Una app externa (por ejemplo NEXE) ha registrado una tarea con complemento.",
+      "example": {
+        "id": 1055,
+        "event": "tarea.registrada",
+        "data": {
+          "tarea": "5e0f1a2b-0011-4c8d-9e0f-000000000011",
+          "referencia": "NEXE-TAREA-000981",
+          "dip": "87654321X",
+          "concepto": "Locución de programa especial",
+          "importe": 60,
+          "estado": "registrada"
+        }
+      }
+    },
+    "tarea.validada": {
+      "description": "Una tarea registrada ha sido validada por otra persona.",
+      "example": {
+        "id": 1056,
+        "event": "tarea.validada",
+        "data": {
+          "tarea": "5e0f1a2b-0011-4c8d-9e0f-000000000011",
+          "referencia": "NEXE-TAREA-000981",
+          "dip": "87654321X",
+          "concepto": "Locución de programa especial",
+          "importe": 60,
+          "estado": "validada"
+        }
+      }
+    },
+    "tarea.rechazada": {
+      "description": "Una tarea ha sido rechazada.",
+      "example": {
+        "id": 1057,
+        "event": "tarea.rechazada",
+        "data": {
+          "tarea": "5e0f1a2b-0011-4c8d-9e0f-000000000011",
+          "referencia": "NEXE-TAREA-000981",
+          "dip": "87654321X",
+          "concepto": "Locución de programa especial",
+          "importe": 60,
+          "estado": "rechazada"
+        }
+      }
+    },
+    "tarea.pagada": {
+      "description": "Una tarea validada se ha pagado al trabajador.",
+      "example": {
+        "id": 1058,
+        "event": "tarea.pagada",
+        "data": {
+          "tarea": "5e0f1a2b-0011-4c8d-9e0f-000000000011",
+          "referencia": "NEXE-TAREA-000981",
+          "dip": "87654321X",
+          "concepto": "Locución de programa especial",
+          "importe": 60,
+          "estado": "pagada"
+        }
+      }
+    },
+    "nomina.pagada": {
+      "description": "Se ha pagado una retribución de un periodo. Una nómina no se paga dos veces.",
+      "example": {
+        "id": 1059,
+        "event": "nomina.pagada",
+        "data": {
+          "dip": "87654321X",
+          "periodo": "2027-01",
+          "importe": 2400,
+          "referencia": "retribucion:3b8c7d6e-0012-4e9f-8a1b-000000000012",
+          "gasto": "9a3d2c1e-0013-4b7c-8d9e-000000000013"
         }
       }
     }

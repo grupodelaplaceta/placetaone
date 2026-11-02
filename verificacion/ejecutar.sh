@@ -11,7 +11,7 @@ paso "2/5 Tipos de la API y librerías";     $TSC -p tsconfig.api.json  && echo 
 paso "3/5 Tipos de las pantallas (React)";  $TSC -p tsconfig.ui.json   && echo "OK" || { echo "FALLO"; fallos=$((fallos+1)); }
 paso "4/5 Comportamiento del SDK (simulador)"; $TSX sdk.test.ts && echo "OK" || { echo "FALLO"; fallos=$((fallos+1)); }
 paso "5/5 SQL: revisión estática y PostgreSQL";
-python3 sql_estatico.py ../supabase/setup/plone27_setup_completo.sql && python3 sql_estatico.py ../supabase/setup/plone27_actualizacion_0022.sql || { echo "FALLO estático"; fallos=$((fallos+1)); }
+for f in ../supabase/setup/*.sql; do python3 sql_estatico.py "$f" || { echo "FALLO estático: $f"; fallos=$((fallos+1)); }; done
 python3 openapi_rutas.py --openapi ../docs/openapi.json --api ../src/app/api --publico ../public/openapi.json --scopes ../src/lib/scopes.ts || { echo "FALLO documentación"; fallos=$((fallos+1)); }
 if [ -n "${DATABASE_URL:-}" ] && command -v psql >/dev/null; then
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f ../supabase/setup/plone27_setup_completo.sql && echo "OK" || { echo "FALLO"; fallos=$((fallos+1)); }

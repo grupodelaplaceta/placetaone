@@ -19,5 +19,13 @@ export const SCOPES = [
   { k: "tarjetas:cobrar", l: "Autorizar, liquidar y liberar cargos de tarjeta" },
   { k: "nominas:read", l: "Consultar contratos de nómina de la entidad" },
   { k: "planes:read", l: "Consultar planes y suscripciones de la entidad" },
+  { k: "organigrama:leer", l: "Consultar el organigrama de una entidad institucional" },
+  { k: "organigrama:gestionar", l: "Crear unidades, puestos y nombramientos; configurar permisos" },
+  { k: "presupuestos:leer", l: "Consultar presupuestos e informes de unidades" },
+  { k: "presupuestos:gestionar", l: "Fijar presupuestos y reasignar fondos" },
+  { k: "gastos:gestionar", l: "Proponer, aprobar, rechazar y pagar gastos" },
+  { k: "tareas:gestionar", l: "Registrar tareas con complemento y validarlas o pagarlas" },
+  { k: "retribuciones:gestionar", l: "Fijar retribuciones y consultar expedientes" },
+  { k: "nominas:generar", l: "Generar y pagar la nómina de un periodo" },
 ] as const;
 export const SCOPE_KEYS: string[] = SCOPES.map(s => s.k);

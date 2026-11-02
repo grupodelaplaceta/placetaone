@@ -131,3 +131,17 @@ Estado de la revisión: inventario automático de rutas (`src/app/api`) frente a
 - **Permisos:** cada ruta comprueba el permiso antes de tocar datos.
 - **Auditoría:** cada operación que cambia dinero o estado deja registro con el actor.
 - **Especificación:** la ruta aparece en OpenAPI y en Postman con ejemplo de respuesta.
+
+## G · Pendientes de diseños de tarjeta (y lo que no está resuelto)
+
+| Pendiente | Estado | Qué falta |
+|---|---|---|
+| Subir archivos de imagen y GIF desde el panel | **No hecho** | Hoy solo se guarda una URL https. Subir archivos exige un almacenamiento (por ejemplo, Supabase Storage) y decidir límites de tamaño y de formato. |
+| Comprobar que la imagen existe y es del tipo correcto | **No hecho** | La base solo comprueba que la URL empieza por https. No se comprueba que el enlace responda. |
+| Aprobación de diseños con cuatro ojos | **No hecho** | Hoy una sola persona con rol `aprobador` puede aprobar y publicar. |
+| Vista previa de la imagen en el panel | **No hecho** | La tabla muestra la URL, no la imagen. |
+| Publicar solo con imagen | **Hecho** (migración 0025) | La base impide `publicado_api = true` sin `imagen_url`. |
+| Editar imagen, GIF, descripción, stock, rareza y publicación después de crear | **Hecho** | Acciones «Imagen…», «GIF o vídeo…», «Stock…», «Rareza…», «Publicar en API» y «Retirar de API». |
+| Formulario de creación completo | **Hecho** | Entidad, rareza, imagen, GIF, descripción, stock y publicación. |
+
+Verificación: la comprobación estática del SQL revisa todos los archivos de instalación. La ejecución real en PostgreSQL y la visualización del panel no se han hecho todavía.

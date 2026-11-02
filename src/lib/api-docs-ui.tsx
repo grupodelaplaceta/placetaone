@@ -15,7 +15,7 @@ type Especificacion = {
   "x-webhooks"?: Record<string, { description?: string; example?: unknown }>;
 };
 
-const PESTANAS = ["Todas", "Banco (servidor)", "Usuario", "Pasarela de pago", "Diseños y tarjetas", "Nóminas y planes", "Webhooks", "Errores y límites"];
+const PESTANAS = ["Todas", "Banco (servidor)", "Usuario", "Pasarela de pago", "Diseños y tarjetas", "Nóminas y planes", "Cuenta institucional", "Webhooks", "Errores y límites"];
 const COLOR: Record<string, string> = { GET: "#0f766e", POST: "#1d4ed8", PUT: "#7c3aed", PATCH: "#b45309", DELETE: "#b91c1c" };
 
 function aplanar(spec: Especificacion): Operacion[] {
