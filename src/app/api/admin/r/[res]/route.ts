@@ -114,6 +114,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (scoped(s, c)) return J("Solo personal global", 403);
   const id = new URL(req.url).searchParams.get("id"); if (!id) return J("Falta id");
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Clave plk_ de un cliente de API: se genera de nuevo y se muestra UNA sola vez (la anterior queda invalidada).
+  if (name === "clients" && b.rotate_key === true) {
+    const clave = "plk_" + hexAleatorio(24);
+    let qk = s.db.from(c.table).update({ key_hash: hashKey(clave) }).eq("id", id); if (s.bank) qk = qk.eq("bank_id", s.bank);
+    const { data: hechoK, error: eK } = await qk.select("id"); if (eK) return J(eK.message, 422);
+    if (!hechoK?.length) return J("Cliente no encontrado", 404);
+    await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "api_key_rotated", entity: "api_client", entity_id: id });
+    return Response.json({ api_key: clave, aviso: "La clave anterior queda invalidada. Se muestra una sola vez." });
+  }
   // Secreto de firma de un cliente de API: se genera de nuevo y se muestra UNA sola vez (igual que al crear el cliente).
   if (name === "clients" && b.rotate_signing === true) {
     const secreto = hexAleatorio(32);
