@@ -114,6 +114,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (scoped(s, c)) return J("Solo personal global", 403);
   const id = new URL(req.url).searchParams.get("id"); if (!id) return J("Falta id");
   const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  // Secreto de firma de un cliente de API: se genera de nuevo y se muestra UNA sola vez (igual que al crear el cliente).
+  if (name === "clients" && b.rotate_signing === true) {
+    const secreto = hexAleatorio(32);
+    let qs = s.db.from(c.table).update({ signing_secret: secreto }).eq("id", id); if (s.bank) qs = qs.eq("bank_id", s.bank);
+    const { data: hecho, error: eSec } = await qs.select("id"); if (eSec) return J(eSec.message, 422);
+    if (!hecho?.length) return J("Cliente no encontrado", 404);
+    await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "api_signing_rotated", entity: "api_client", entity_id: id });
+    return Response.json({ signing_secret: secreto, aviso: "El secreto de firma anterior queda invalidado. Se muestra una sola vez." });
+  }
   const K = (p: string) => p + ":" + id;                                         // claves deterministas: un doble clic no duplica
   const rpc: Record<string, [string, Record<string, unknown>] | null> = {
     carddesigns: b.status ? ["plone27_design_step", { p_design: id, p_to: b.status }] : null,
