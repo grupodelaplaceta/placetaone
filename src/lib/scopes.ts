@@ -27,5 +27,10 @@ export const SCOPES = [
   { k: "tareas:gestionar", l: "Registrar tareas con complemento y validarlas o pagarlas" },
   { k: "retribuciones:gestionar", l: "Fijar retribuciones y consultar expedientes" },
   { k: "nominas:generar", l: "Generar y pagar la nómina de un periodo" },
+  // Permisos de usuario: los concede el cliente a cada sesión (POST /sessions). Un cliente sin ellos no puede abrir sesiones de usuario.
+  { k: "me:read", l: "Usuario: consultar sus cuentas, movimientos y avisos" },
+  { k: "me:transfer", l: "Usuario: transferir, programar y comprar" },
+  { k: "me:contratar", l: "Usuario: solicitar productos y préstamos" },
+  { k: "me:seguridad", l: "Usuario: suspender tarjetas y cerrar sesiones" },
 ] as const;
 export const SCOPE_KEYS: string[] = SCOPES.map(s => s.k);
