@@ -1,0 +1,3409 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Placeta One · API para entidades bancarias",
+    "version": "1.1.0",
+    "description": "Endpoints para construir una web o app de banca online. Los permisos de cada operación están en x-permiso. Los endpoints de usuario (me) solo devuelven datos del usuario de la sesión."
+  },
+  "servers": [
+    {
+      "url": "https://{entorno}",
+      "variables": {
+        "entorno": {
+          "default": "api.placeta.example"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Servidor",
+      "description": "Llamadas del backend del banco (clave y firma)"
+    },
+    {
+      "name": "Usuario",
+      "description": "Llamadas de la web o app con el token de sesión"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Token pus_… de la sesión (15 min por defecto, máximo 60)"
+      },
+      "claveServidor": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "Clave plk_… del backend. Requiere además firma HMAC. Rechazada desde navegadores."
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/bk/link-account": {
+      "post": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Vincular un usuario (DIP) a una cuenta de la entidad",
+        "x-permiso": "usuarios:gestionar",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "vinculado": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "12345678Z",
+                "iban": "PZ-0001-0002",
+                "rol": "holder"
+              }
+            }
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/bk/personas": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Buscar por DIP las cuentas de la entidad",
+        "x-permiso": "personas:buscar",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cuentas": [
+                    {
+                      "iban": "PZ-0001-0002",
+                      "nombre": "Cuenta corriente",
+                      "tipo": "personal",
+                      "rol": "holder",
+                      "estado": "active"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dip",
+            "in": "query",
+            "required": true,
+            "description": "DIP de la persona (obligatorio). Se normaliza solo: sin espacios ni guiones, en mayúsculas.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/sessions": {
+      "post": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Crear sesión de usuario (firmada)",
+        "x-permiso": "sesiones:crear",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "token": "pus_…",
+                  "expira": "2026-11-03T09:15:00Z",
+                  "permisos": [
+                    "me:read",
+                    "me:transfer"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "12345678Z",
+                "minutos": 15,
+                "permisos": [
+                  "me:read",
+                  "me:transfer"
+                ]
+              }
+            }
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      },
+      "delete": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Cerrar la sesión actual",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "revocada": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/accounts/{iban}": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Ficha de una cuenta de la entidad",
+        "x-permiso": "accounts:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0001-0002"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/accounts": {
+      "post": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Crear una cuenta",
+        "x-permiso": "accounts:write",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "0b7d6e1f-3c2a-4f8e-9d17-5a4b8c6e2f31"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "name": "Cuenta",
+                "owner": "5e0b2f8a-7c41-4d9e-9b3a-000000000001",
+                "product_id": "5e0b2f8a-7c41-4d9e-9b3a-000000000002"
+              }
+            }
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/accounts/{iban}/transactions": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Movimientos de una cuenta de la entidad",
+        "x-permiso": "accounts:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "movimientos": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/accounts/{iban}/receipts": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Recibos de una cuenta de la entidad",
+        "x-permiso": "accounts:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "recibos": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/accounts/{iban}/cards": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Tarjetas de una cuenta",
+        "x-permiso": "cards:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "tarjetas": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/accounts/{iban}/membership": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Estado de la membresía",
+        "x-permiso": "memberships:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "estado": "active"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/accounts/{iban}/membership/renew": {
+      "post": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Renovar la membresía",
+        "x-permiso": "memberships:write",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "renovada": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "user_id": "5e0b2f8a-7c41-4d9e-9b3a-000000000003"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/transfers": {
+      "post": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Transferencia entre cuentas de la entidad",
+        "x-permiso": "transfers:write",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transfer": "TRF-2026-004412",
+                  "operation": "OP-2026-004412"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "from_iban": "PZ-0001-0002",
+                "to_iban": "PZ-0001-0009",
+                "amount": 50,
+                "memo": "Cena",
+                "user_id": "5e0b2f8a-7c41-4d9e-9b3a-000000000004"
+              }
+            }
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/transfers/{ref}": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Estado de una transferencia",
+        "x-permiso": "transfers:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ref": "TRF-2026-004412",
+                  "estado": "posted",
+                  "importe": 50,
+                  "desde": "PZ-0001-0002",
+                  "hacia": "PZ-0001-0009",
+                  "fecha": "2026-11-01T09:12:00Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "Referencia",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Productos de la entidad",
+        "x-permiso": "products:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "productos": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Datos de la sesión: entidad y permisos",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "banco": {
+                    "codigo": "0001",
+                    "nombre": "Mi Banco"
+                  },
+                  "permisos": [
+                    "me:read"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/accounts": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Mis cuentas",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cuentas": [
+                    {
+                      "iban": "PZ-0001-0002",
+                      "nombre": "Cuenta corriente",
+                      "tipo": "personal",
+                      "rol": "holder",
+                      "saldo": 1520.4,
+                      "disponible": 1500.4
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      },
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Abrir una cuenta personal propia (máximo 3 por entidad)",
+        "x-permiso": "me:contratar",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cuenta": "0b7d6e1f-3c2a-4f8e-9d17-5a4b8c6e2f31"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nombre": "Cuenta de ahorro"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/accounts/{iban}": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Ficha de una cuenta propia",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0001-0002",
+                  "saldo": 1520.4,
+                  "reservado": 20,
+                  "disponible": 1500.4,
+                  "limite_diario": 3000,
+                  "descubierto": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/accounts/{iban}/transactions": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Movimientos (paginados por cursor)",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "movimientos": [
+                    {
+                      "id": 1041,
+                      "fecha": "2026-11-01T09:12:00Z",
+                      "sentido": "debit",
+                      "importe": 18.9,
+                      "tipo": "transfer",
+                      "memo": "Compra en Tienda Demo"
+                    },
+                    {
+                      "id": 1040,
+                      "fecha": "2026-10-31T18:40:00Z",
+                      "sentido": "credit",
+                      "importe": 250,
+                      "tipo": "transfer",
+                      "memo": "Nómina"
+                    }
+                  ],
+                  "siguiente": 1039
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "antes",
+            "in": "query",
+            "required": false,
+            "description": "Cursor: siguiente de la página anterior",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "description": "Máximo 100",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/accounts/{iban}/statement": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Extracto del periodo: saldo inicial, movimientos y saldo final",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "saldo_inicial": 1470.4,
+                  "movimientos": [
+                    {
+                      "id": 1041,
+                      "fecha": "2026-11-01T09:12:00Z",
+                      "sentido": "debit",
+                      "importe": 18.9,
+                      "tipo": "transfer",
+                      "memo": "Compra en Tienda Demo"
+                    }
+                  ],
+                  "saldo_final": 1451.5
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/accounts/{iban}/receipts": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Recibos fiscales de una cuenta propia",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "recibos": [
+                    {
+                      "ref": "REC-2026-000123",
+                      "impuesto": "IVA",
+                      "base": 1000,
+                      "importe": 120,
+                      "pagado": 0,
+                      "estado": "issued",
+                      "vence": "2026-11-20",
+                      "creado": "2026-11-01T06:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/accounts/{iban}/cards": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Tarjetas de una cuenta propia (sin número completo)",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "tarjetas": [
+                    {
+                      "ref": "TRJ-0001-000123",
+                      "tipo": "digital",
+                      "ultimos4": "1234",
+                      "caduca": "2029-11-30",
+                      "estado": "active",
+                      "limite": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/me/receipts/{ref}/certificate": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Certificado de cálculo de un recibo propio",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "norma": "IVA",
+                  "base": 1000,
+                  "importe": 120,
+                  "hash": "a3f1c9e27b8d4f0e95c6a1b2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f6a"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "Referencia del recibo",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/lookup": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Comprobar un IBAN antes de transferir",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "existe": true,
+                  "entidad": "0002",
+                  "titular": "Ma***"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "query",
+            "required": false,
+            "description": "IBAN",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/transfers": {
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Transferir dinero desde una cuenta propia",
+        "x-permiso": "me:transfer",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "c41a7f30-2e9b-4d62-8a15-9e3f0b6d2a77"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "desde_iban": "PZ-0001-0002",
+                "hacia_iban": "PZ-0001-0009",
+                "importe": 50,
+                "concepto": "Cena"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/transfers/scheduled": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Transferencias programadas activas",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "programadas": [
+                    {
+                      "id": "b3c9e1d2-5f7a-4b8c-9d0e-1a2b3c4d5e6f",
+                      "origen": "PZ-0001-0002",
+                      "destino": "PZ-0001-0009",
+                      "importe": 200,
+                      "proxima": "2026-12-01T09:00:00Z",
+                      "periodicidad": "30 days",
+                      "estado": "active",
+                      "concepto": "Alquiler"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      },
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Programar una transferencia (única o periódica)",
+        "x-permiso": "me:transfer",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "programada": "b3c9e1d2-5f7a-4b8c-9d0e-1a2b3c4d5e6f"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "desde_iban": "PZ-0001-0002",
+                "hacia_iban": "PZ-0001-0009",
+                "importe": 200,
+                "fecha": "2026-11-01T09:00:00Z",
+                "periodicidad_dias": 30,
+                "concepto": "Alquiler"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/transfers/scheduled/{id}": {
+      "delete": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Cancelar una transferencia programada",
+        "x-permiso": "me:transfer",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancelada": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/beneficiaries": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Beneficiarios guardados",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "beneficiarios": [
+                    {
+                      "id": "d1e2f3a4-b5c6-4d7e-8f90-a1b2c3d4e5f6",
+                      "alias": "Casa de mamá",
+                      "iban": "PZ-0001-0009",
+                      "creado": "2026-10-20T10:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      },
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Guardar un beneficiario",
+        "x-permiso": "me:transfer",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "beneficiario": "d1e2f3a4-b5c6-4d7e-8f90-a1b2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "alias": "Casa de mamá",
+                "iban": "PZ-0001-0009"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/beneficiaries/{id}": {
+      "delete": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Borrar un beneficiario",
+        "x-permiso": "me:transfer",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "borrado": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/cards/{ref}": {
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Suspender o reactivar una tarjeta propia",
+        "x-permiso": "me:seguridad",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "estado": "suspended"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "estado": "suspended"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "Referencia de la tarjeta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/me/notifications": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Notificaciones (ingresos y cargos)",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "notificaciones": [
+                    {
+                      "id": 9001,
+                      "tipo": "ingreso",
+                      "texto": "Has recibido 50 Pz en PZ-0001-0002",
+                      "creada": "2026-11-01T08:00:00Z",
+                      "leida": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "solo_nuevas",
+            "in": "query",
+            "required": false,
+            "description": "1 para solo no leídas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "description": "Máximo 200",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/notifications/read": {
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Marcar notificaciones como leídas",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "marcadas": 2
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "ids": [
+                  9001,
+                  9002
+                ]
+              }
+            }
+          }
+        },
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/previsiones": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Mis próximos movimientos (máximo 366 días)",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "previsiones": [
+                    {
+                      "fecha": "2026-11-05",
+                      "tipo": "Cuota",
+                      "referencia": "Plan a1d4e7c0 · cuota 4",
+                      "iban": "PZ-0001-0002",
+                      "importe": 100.5,
+                      "estado": "cobrable",
+                      "detalle": "Capital 92.10 · interés 8.40"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/rbu": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Mis bonos de la RBU",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "bonos": [
+                    {
+                      "id": "c7d8e9f0-1a2b-4c3d-8e4f-5a6b7c8d9e0f",
+                      "semana": "2026-10-26",
+                      "importe": 5,
+                      "estado": "available",
+                      "caduca": "2026-11-30",
+                      "cartera": "PZ-0001-0002"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/rbu/{id}/claim": {
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Reclamar un bono de la RBU",
+        "x-permiso": "me:transfer",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "c41a7f30-2e9b-4d62-8a15-9e3f0b6d2a77"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador del bono",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/plans": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Mis planes a plazos y suscripciones",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "planes": [
+                    {
+                      "id": "a1d4e7c0-3b9f-4e21-8d56-7c2f0a9b4e18",
+                      "tipo": "installment",
+                      "cuenta": "PZ-0001-0002",
+                      "capital": 1200,
+                      "tasa_anual": 0.09,
+                      "cuotas": 12,
+                      "estado": "active",
+                      "proxima": "2026-11-05"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Nóminas y planes"
+      }
+    },
+    "/api/v1/me/requests": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Mis solicitudes (préstamo o cuenta)",
+        "x-permiso": "me:contratar",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "solicitudes": [
+                    {
+                      "id": "e2f3a4b5-c6d7-4e8f-9a0b-c1d2e3f4a5b6",
+                      "tipo": "prestamo",
+                      "importe": 3000,
+                      "cuotas": 12,
+                      "estado": "pendiente",
+                      "creada": "2026-10-30T12:00:00Z",
+                      "resuelta": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      },
+      "post": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Solicitar un préstamo o una cuenta (queda pendiente)",
+        "x-permiso": "me:contratar",
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "solicitud": "e2f3a4b5-c6d7-4e8f-9a0b-c1d2e3f4a5b6"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "tipo": "prestamo",
+                "importe": 3000,
+                "cuotas": 12,
+                "motivo": "Reforma"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento (máximo 128)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/me/sessions": {
+      "get": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Mis sesiones abiertas (sin tokens)",
+        "x-permiso": "me:read",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "sesiones": [
+                    {
+                      "id": "f3a4b5c6-d7e8-4f9a-8b1c-d2e3f4a5b6c7",
+                      "cliente": "Tienda Demo",
+                      "creada": "2026-11-01T08:00:00Z",
+                      "expira": "2026-11-01T08:15:00Z",
+                      "revocada": false,
+                      "permisos": [
+                        "me:read",
+                        "me:transfer"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      },
+      "delete": {
+        "tags": [
+          "Usuario"
+        ],
+        "summary": "Cerrar todas mis sesiones excepto la actual",
+        "x-permiso": "me:seguridad",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cerradas": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "401": {
+            "description": "Sesión o firma no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          },
+          "404": {
+            "description": "No encontrado o no accesible"
+          },
+          "422": {
+            "description": "Operación no posible"
+          },
+          "429": {
+            "description": "Demasiadas peticiones"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-grupo": "Usuario"
+      }
+    },
+    "/api/v1/bk/origenes": {
+      "get": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Listar los orígenes de navegador de tu cliente",
+        "x-permiso": "origenes:gestionar",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "origenes": [
+                    {
+                      "origin": "https://app.tubanco.es",
+                      "estado": "aprobado",
+                      "entorno": "produccion",
+                      "solicitado": "2026-10-15T09:00:00Z",
+                      "aprobado": "2026-10-15T11:30:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      },
+      "post": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Solicitar un origen (queda pendiente de aprobación)",
+        "x-permiso": "origenes:gestionar",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "origen": "https://app.tubanco.es",
+                "entorno": "produccion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Solicitud registrada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "origen": "https://app.tubanco.es",
+                  "estado": "pendiente"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Origen no válido"
+          },
+          "422": {
+            "description": "No permitido"
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      },
+      "delete": {
+        "tags": [
+          "Servidor"
+        ],
+        "summary": "Retirar un origen",
+        "x-permiso": "origenes:gestionar",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "origen",
+            "in": "query",
+            "required": true,
+            "description": "Origen a retirar",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retirado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "retirado": true
+                }
+              }
+            }
+          }
+        },
+        "x-grupo": "Banco (servidor)"
+      }
+    },
+    "/api/v1/designs": {
+      "get": {
+        "summary": "Catálogo de diseños para tu entidad",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "disenos": [
+                    {
+                      "codigo": "DIS-00001",
+                      "nombre": "Aurora",
+                      "nivel": "premium",
+                      "rareza": "epica",
+                      "precio": 12.5,
+                      "licencia": 2,
+                      "descripcion": "Diseño con aurora boreal animada",
+                      "imagen_url": "https://cdn.ejemplo.es/diseños/aurora.png",
+                      "animacion_url": "https://cdn.ejemplo.es/diseños/aurora.gif",
+                      "stock_disponible": 48,
+                      "vendidos": 2
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Clave no válida"
+          },
+          "403": {
+            "description": "Permiso insuficiente"
+          }
+        },
+        "x-permiso": "products:read",
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/me/designs": {
+      "get": {
+        "summary": "Diseños disponibles para ti en tu entidad",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "disenos": [
+                    {
+                      "codigo": "DIS-00001",
+                      "nombre": "Aurora",
+                      "nivel": "premium",
+                      "rareza": "epica",
+                      "precio": 12.5,
+                      "licencia": 2,
+                      "descripcion": "Diseño con aurora boreal animada",
+                      "imagen_url": "https://cdn.ejemplo.es/diseños/aurora.png",
+                      "animacion_url": "https://cdn.ejemplo.es/diseños/aurora.gif",
+                      "stock_disponible": 48,
+                      "ya_adquirido": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no válida"
+          }
+        },
+        "x-permiso": "me:read",
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/me/designs/comprados": {
+      "get": {
+        "summary": "Diseños que has comprado",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "disenos": [
+                    {
+                      "codigo": "DIS-00001",
+                      "nombre": "Aurora",
+                      "nivel": "premium",
+                      "rareza": "epica",
+                      "imagen_url": "https://cdn.ejemplo.es/diseños/aurora.png",
+                      "animacion_url": "https://cdn.ejemplo.es/diseños/aurora.gif",
+                      "comprado": "2026-10-28T09:41:07Z",
+                      "cuenta_iban": "PZ-0001-0002",
+                      "transaccion": "8f2c1e4a-6b0d-4f7e-9a51-2d3c8b7e1f90",
+                      "tarjetas_con_diseno": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no válida"
+          }
+        },
+        "x-permiso": "me:read",
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/me/designs/{codigo}/buy": {
+      "post": {
+        "summary": "Comprar un diseño desde una cuenta propia",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Compra realizada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "8f2c1e4a-6b0d-4f7e-9a51-2d3c8b7e1f90"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Saldo insuficiente / Sin stock / Diseño no disponible en tu entidad"
+          }
+        },
+        "x-permiso": "me:transfer",
+        "parameters": [
+          {
+            "name": "codigo",
+            "in": "path",
+            "required": true,
+            "description": "Código comercial del diseño (DIS-00001)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento de la acción del usuario (máximo 128). Reutilízala en los reintentos.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "iban": "PZ-0001-0002"
+              }
+            }
+          }
+        },
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/me/cards/{ref}/diseno": {
+      "post": {
+        "summary": "Aplicar a una tarjeta un diseño comprado por su cuenta",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "diseno": "DIS-00001"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No has comprado este diseño para la cuenta de esta tarjeta"
+          }
+        },
+        "x-permiso": "me:seguridad",
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "Referencia de la tarjeta",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "codigo": "DIS-00001"
+              }
+            }
+          }
+        },
+        "description": "Con codigo null se quita el diseño.",
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/bk/checkouts": {
+      "post": {
+        "summary": "Crear un pago en la pasarela",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Pago creado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15",
+                  "expira": "2026-11-01T14:18:11Z",
+                  "url": "https://placetaone.vercel.app/pagar/9f2c4e1a7b…"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Origen no autorizado / Importe fuera de rango / Cuenta del pagador no accesible"
+          }
+        },
+        "x-permiso": "checkout:crear",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "origen": "https://app.tubanco.es",
+                "client_ref": "pedido-1001",
+                "dip": "12345678Z",
+                "iban_pagador": "PZ-0001-0002",
+                "iban_destino": "PZ-0002-0100",
+                "importe": 42,
+                "concepto": "Pedido 1001",
+                "minutos": 15
+              }
+            }
+          }
+        },
+        "description": "El código de verificación no se devuelve aquí: llega por el webhook checkout.codigo.",
+        "x-grupo": "Pasarela de pago"
+      }
+    },
+    "/api/v1/bk/checkouts/{id}": {
+      "get": {
+        "summary": "Estado de un pago",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15",
+                  "client_ref": "pedido-1001",
+                  "estado": "pagado",
+                  "importe": 42,
+                  "concepto": "Pedido 1001",
+                  "transaccion": "8f2c1e4a-6b0d-4f7e-9a51-2d3c8b7e1f90",
+                  "creado": "2026-11-01T14:03:11Z",
+                  "resuelto": "2026-11-01T14:05:42Z",
+                  "intentos": 1
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado"
+          }
+        },
+        "x-permiso": "checkout:crear",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador del pago",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Nunca incluye el código ni el token.",
+        "x-grupo": "Pasarela de pago"
+      }
+    },
+    "/api/v1/bk/tarjetas/cargos": {
+      "post": {
+        "summary": "Autorizar un cargo en una tarjeta de tu entidad",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Cargo autorizado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cargo": "5b7e9d2c-1a4f-4e8b-b3c6-0f9a2d7e5c48",
+                  "estado": "authorized"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Tarjeta no encontrada / Límite de crédito superado / Saldo insuficiente"
+          }
+        },
+        "x-permiso": "tarjetas:cobrar",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento de la acción del usuario (máximo 128). Reutilízala en los reintentos.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "card_ref": "TRJ-0001-000123",
+                "importe": 18.9,
+                "iban_comercio": "PZ-0002-0100"
+              }
+            }
+          }
+        },
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/bk/tarjetas/cargos/{id}/liquidar": {
+      "post": {
+        "summary": "Liquidar un cargo autorizado",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "c41a7f30-2e9b-4d62-8a15-9e3f0b6d2a77",
+                  "estado": "settled"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Cargo ya procesado"
+          }
+        },
+        "x-permiso": "tarjetas:cobrar",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador del cargo",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Clave única por intento de la acción del usuario (máximo 128). Reutilízala en los reintentos.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "En tarjetas de crédito el cargo pasa a facturado y transaccion es null.",
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/bk/tarjetas/cargos/{id}/liberar": {
+      "post": {
+        "summary": "Liberar un cargo autorizado que no se va a liquidar",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "estado": "released"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Solo se liberan cargos autorizados"
+          }
+        },
+        "x-permiso": "tarjetas:cobrar",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador del cargo",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Diseños y tarjetas"
+      }
+    },
+    "/api/v1/bk/nominas": {
+      "get": {
+        "summary": "Contratos de nómina de tu entidad (solo lectura)",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "nominas": [
+                    {
+                      "id": "e7a3c1b9-4d2f-4a8e-9c60-1b5f8e2d7a03",
+                      "bruto": 2400,
+                      "dia_pago": 27,
+                      "proximo_pago": "2026-11-27",
+                      "estado": "active",
+                      "jornada_completa": true,
+                      "inicio": "2025-03-01"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-permiso": "nominas:read",
+        "x-grupo": "Nóminas y planes"
+      }
+    },
+    "/api/v1/bk/planes": {
+      "get": {
+        "summary": "Planes a plazos y suscripciones de tu entidad (solo lectura)",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "planes": [
+                    {
+                      "id": "a1d4e7c0-3b9f-4e21-8d56-7c2f0a9b4e18",
+                      "tipo": "installment",
+                      "principal": 1200,
+                      "cuotas": 12,
+                      "estado": "active",
+                      "proximo": "2026-11-05",
+                      "cuotas_pendientes": 9
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-permiso": "planes:read",
+        "x-grupo": "Nóminas y planes"
+      }
+    },
+    "/api/checkout/{token}": {
+      "get": {
+        "summary": "Estado público de un pago (ventana de pago)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "estado": "pendiente",
+                  "importe": 42,
+                  "concepto": "Pedido 1001",
+                  "expira": "2026-11-01T14:18:11Z",
+                  "intentos_restantes": 3,
+                  "origen": "https://app.tubanco.es",
+                  "banco": {
+                    "nombre": "Banco Demo",
+                    "logo": "https://cdn.ejemplo.es/logo.svg",
+                    "color": "#0a4d8c"
+                  },
+                  "comercio": "Tienda Demo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado"
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "Token de la ventana de pago (64 caracteres hexadecimales)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Pasarela de pago"
+      }
+    },
+    "/api/checkout/{token}/confirmar": {
+      "post": {
+        "summary": "Confirmar el pago con el código de verificación",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Pago realizado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true,
+                  "transaccion": "8f2c1e4a-6b0d-4f7e-9a51-2d3c8b7e1f90",
+                  "estado": "pagado"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Código incorrecto (con intentos_restantes) / pago caducado / sin saldo"
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "Token de la ventana de pago",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "codigo": "482913"
+              }
+            }
+          }
+        },
+        "description": "Tras tres intentos fallidos el pago pasa a fallido.",
+        "x-grupo": "Pasarela de pago"
+      }
+    },
+    "/api/checkout/{token}/cancelar": {
+      "post": {
+        "summary": "Cancelar un pago pendiente",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancelado": true
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "description": "Token de la ventana de pago",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-grupo": "Pasarela de pago"
+      }
+    }
+  },
+  "x-webhooks": {
+    "checkout.codigo": {
+      "description": "Al crear un pago. Envía el código al cliente por tu canal (app, SMS). Nunca lo muestres en la web del comercio ni lo registres en logs.",
+      "example": {
+        "id": 1042,
+        "event": "checkout.codigo",
+        "data": {
+          "checkout_id": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15",
+          "client_ref": "pedido-1001",
+          "codigo": "482913",
+          "importe": 42,
+          "concepto": "Pedido 1001",
+          "expira": "2026-11-01T14:18:11Z"
+        }
+      }
+    },
+    "checkout.pagado": {
+      "description": "El pago se ha cobrado. Usa este evento, no el mensaje de la ventana, para registrar el pago.",
+      "example": {
+        "id": 1043,
+        "event": "checkout.pagado",
+        "data": {
+          "checkout_id": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15",
+          "client_ref": "pedido-1001",
+          "importe": 42,
+          "transaccion": "8f2c1e4a-6b0d-4f7e-9a51-2d3c8b7e1f90"
+        }
+      }
+    },
+    "checkout.cancelado": {
+      "description": "El cliente ha cancelado el pago desde la ventana.",
+      "example": {
+        "id": 1044,
+        "event": "checkout.cancelado",
+        "data": {
+          "checkout_id": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15",
+          "client_ref": "pedido-1001"
+        }
+      }
+    },
+    "transaction.posted": {
+      "description": "Se ha contabilizado un movimiento en una cuenta de tu entidad.",
+      "example": {
+        "id": 1045,
+        "event": "transaction.posted",
+        "data": {
+          "operation": "OP-2026-004412",
+          "transfer": "TRF-2026-004412",
+          "kind": "transfer"
+        }
+      }
+    }
+  }
+}

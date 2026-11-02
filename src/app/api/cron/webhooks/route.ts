@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const max = Number((await db.from("plone27_settings").select("value").eq("key", "webhook_max_attempts").single()).data?.value ?? 5);
   let sent = 0, failed = 0;
   for (const e of events ?? []) {
-    const targets = (hooks ?? []).filter(h => e.bank_ids.includes(h.bank_id) && (h.events.includes("*") || h.events.includes(e.event)));
+    const targets = (hooks ?? []).filter((h: { bank_id: string; events: string[] }) => e.bank_ids.includes(h.bank_id) && (h.events.includes("*") || h.events.includes(e.event)));
     let ok = true;
     for (const h of targets) {
       const body = JSON.stringify({ id: e.id, event: e.event, data: e.payload });

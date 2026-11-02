@@ -1,5 +1,5 @@
 import { staffFrom } from "@/lib/supabase";
-import { ENDPOINTS } from "@/lib/scopes";
+import { ENDPOINTS } from "@/lib/endpoints";
 import { envAny, SUPABASE_URL_NAMES, SUPABASE_ANON_NAMES, SUPABASE_SERVICE_NAMES } from "@/lib/env";
 export const dynamic = "force-dynamic";
 type Chk = { name: string; ok: boolean; detail: string; ms?: number };

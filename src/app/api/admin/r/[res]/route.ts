@@ -1,4 +1,5 @@
-import { randomBytes, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
+import { hexAleatorio } from "@/lib/apikey";
 import { staffFrom } from "@/lib/supabase";
 import { hashKey } from "@/lib/apikey";
 import { SCOPE_KEYS } from "@/lib/scopes";
@@ -14,7 +15,7 @@ const R: Record<string, Cfg> = {
   taxrules: { table: "plone27_tax_rules", sel: "id,code,name,max_rate,collector_account", read: ALL, write: ["fiscal"], create: ["code", "name", "max_rate", "collector_account"], update: ["name", "max_rate", "collector_account"], order: "code" },
   taxversions: { table: "plone27_tax_rule_versions", sel: "id,rule_id,version,method,rate,min_amount,max_amount,valid_from,valid_to,status,retro_mode,reason,scope_op", read: ALL, write: ["fiscal"], create: ["rule_id", "method", "rate", "min_amount", "max_amount", "valid_from", "valid_to", "retro_mode", "reason", "scope_bank", "scope_op"], update: ["valid_to"], order: "version" },
   products: { table: "plone27_products", sel: "id,code,kind,name,status,daily_limit,monthly_fee,interest_rate,min_age,valid_from,valid_to,bank_id", read: ALL, write: BK, create: ["code", "bank_id", "kind", "name", "description", "daily_limit", "credit_limit", "monthly_fee", "fee_account", "interest_rate", "min_age", "requires_guardian", "valid_from", "valid_to"], update: ["name", "description", "status", "daily_limit", "monthly_fee", "valid_to"], bank: "bank_id", order: "code" },
-  carddesigns: { table: "plone27_card_designs", sel: "id,name,tier,price,license_fee,status,revenue_account", read: ALL, write: ["gestor_bancario", "aprobador"], create: ["name", "tier", "price", "license_fee", "revenue_account"], update: [], shared: true },
+  carddesigns: { table: "plone27_card_designs", sel: "id,codigo,name,tier,rareza,price,license_fee,stock,vendidos,publicado_api,bank_id,status,revenue_account,imagen_url,animacion_url,descripcion", read: ALL, write: ["gestor_bancario", "aprobador"], create: ["name","tier","rareza","price","license_fee","revenue_account","stock","bank_id","imagen_url","animacion_url","descripcion","publicado_api"], update: ["rareza","price","license_fee","stock","bank_id","imagen_url","animacion_url","descripcion","publicado_api"], shared: true },
   cards: { table: "plone27_cards", sel: "id,card_ref,account_id,kind,status,is_test,expires,last4,credit_limit", read: ALL, write: BK, create: ["account_id", "kind", "credit_limit", "is_test"], update: [] },
   transactions: { table: "plone27_transactions", sel: "id,ref,transfer_ref,kind,status,memo,created_at", read: ALL, write: BK, create: ["from_account", "to_account", "amount", "memo"], update: [], desc: "created_at" },
   scheduled: { table: "plone27_scheduled", sel: "id,from_account,to_account,amount,run_at,recurrence,status,memo", read: ALL, write: ["financiero"], create: ["from_account", "to_account", "amount", "run_at", "recurrence", "memo"], update: ["status"] },
@@ -70,7 +71,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (scoped(s, c)) return J("Solo personal global", 403);
   if (s.bank) { if (name === "banks") return J("Solo personal global crea entidades", 403); if (c.create.includes("bank_id")) f.bank_id = s.bank; }
   if (badScopes(f.scopes)) return J("Scope desconocido");
-  let secret: string | undefined, row: unknown;
+  let secret: string | undefined, row: unknown; let signingOnce: string | undefined;
   if (name === "banks") {
     const { data, error } = await s.db.rpc("plone27_open_bank", { p_name: f.name, p_actor: s.id }); if (error) return J(error.message, 422);
     if (f.description) await s.db.from(c.table).update({ description: f.description }).eq("id", data.id); row = data;
@@ -83,8 +84,8 @@ export async function POST(req: Request, { params }: Ctx) {
   } else if (name === "accounts") {
     const { data, error } = await s.db.rpc("plone27_open_account", { p_bank: f.bank_id, p_kind: f.kind, p_name: f.name, p_owner: null, p_actor: s.id }); if (error) return J(error.message, 422); row = data;
   } else {
-    if (name === "webhooks") { secret = randomBytes(24).toString("hex"); f.secret = secret; }
-    if (name === "clients") { secret = "plk_" + randomBytes(24).toString("hex"); f.key_hash = hashKey(secret); if (!f.scopes) f.scopes = ["accounts:read", "transfers:write"]; }
+    if (name === "webhooks") { secret = hexAleatorio(24); f.secret = secret; }
+    if (name === "clients") { secret = "plk_" + hexAleatorio(24); f.key_hash = hashKey(secret); f.signing_secret = hexAleatorio(32); signingOnce = f.signing_secret as string; if (!f.scopes) f.scopes = ["accounts:read", "transfers:write"]; }
     if (["fees", "distribution"].includes(name)) f.approved_by = s.id;
     if (name === "products") f.created_by = s.id;
     if (f.kind === "account_junior") f.requires_guardian = true;
@@ -95,10 +96,10 @@ export async function POST(req: Request, { params }: Ctx) {
     if (name === "taxversions") { const m = await s.db.from(c.table).select("version").eq("rule_id", f.rule_id as string).order("version", { ascending: false }).limit(1); f.version = ((m.data?.[0]?.version as number) ?? 0) + 1; f.author = s.id; if (!f.reason) f.reason = "alta"; }
     const q = name === "staff" ? s.db.from(c.table).upsert(f) : s.db.from(c.table).insert(f);
     const { data, error } = await q.select().single(); if (error) return J(error.message, 422);
-    row = data; if (name === "clients" && data) delete (data as Record<string, unknown>).key_hash;
+    row = data; if (name === "clients" && data) delete (data as Record<string, unknown>).key_hash; delete (data as Record<string, unknown>).signing_secret;
   }
-  await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "admin_create", entity: name, detail: { ...f, key_hash: undefined, secret: undefined } });
-  return Response.json({ row, secret });
+  await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "admin_create", entity: name, detail: { ...f, key_hash: undefined, secret: undefined, signing_secret: undefined } });
+  return Response.json({ row, secret, signing_secret: signingOnce });
 }
 export async function DELETE(req: Request, { params }: Ctx) {
   const name = (await params).res; if (name !== "members") return J("No permitido", 405);

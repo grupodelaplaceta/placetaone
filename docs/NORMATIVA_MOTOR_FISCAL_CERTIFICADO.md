@@ -215,3 +215,31 @@ Estos cambios sustituyen a lo anterior donde se contradigan.
 - **D7 confirmada**: SMI de 160 Pz al mes.
 - **D11 nueva**: umbrales de detección (tabla anterior).
 - **D12 nueva**: si las cuentas de sistema (Reserva, Tributos) pueden operar con cuentas Junior sin estar marcadas. Hoy quedan fuera de la restricción Junior, como antes. La norma debe decidirlo.
+
+---
+
+## Tercera ronda · cierre mensual, criterio de ventas, bases y estadísticas (29 de octubre de 2026)
+
+- **Art. T116 · Cierre mensual.** Cada mes se cierra el anterior el día configurado (`dia_cierre`, por defecto el 6). El cierre liquida el IVA, calcula los impuestos periódicos y emite los recibos. Se certifica con una huella que cubre todas sus declaraciones. Un mes cerrado no se modifica: los cambios posteriores van al mes siguiente como ajuste.
+- **Art. T117 · Criterio de sujeción de cobros comerciales.** Un cobro comercial sin venta registrada se presume venta gravada en el cierre de su mes, con base igual al importe cobrado. El titular puede justificarlo mediante una propuesta aprobada por otra persona; la justificación genera un ajuste negativo en el mes siguiente. Las señales de patrón comercial en cuentas personales y de fraccionamiento solo se revisan, no generan IVA automáticamente.
+- **Art. T118 · Retención de seguridad.** Una declaración se retiene para aprobación cuando su importe iguala o supera el umbral (50.000 Pz por defecto) o cuando sube más de un 300 % frente al cierre anterior del mismo titular e impuesto. Una declaración retenida no genera recibo hasta que otra persona la aprueba. Los umbrales son propuesta de la Junta.
+- **Art. T119 · Bases de los impuestos periódicos (D3).** Se calculan sobre el libro:
+  - IRM: transferencias salientes a terceros del mes.
+  - IRP: transferencias entrantes de terceros del mes.
+  - IGF e IPE: saldo a fin de mes (nunca negativo).
+  - IBA: ventas menos compras y nóminas de la empresa.
+  - ITP: transferencias de empresa a empresa de otro titular.
+  - IVA: 12 % sobre la base devengada menos la soportada, con arrastre de saldos negativos al mes siguiente.
+  Aplican a todas las personas, incluidos los Junior. Los Junior pagan a través del pagador configurado (Art. T105); el obligado queda siempre registrado.
+- **Art. T120 · Pagador de los Junior.** El pagador es la cuenta configurada en `pagador_impuestos_junior`. Si no hay ninguna, se usa Capitalia (cuenta principal) cuando está activa la instrucción de la segunda ronda, y si no, la cuenta de Placeta Junior.
+- **Art. T121 · Estadísticas.** Cada día se guarda un resumen de métricas (transacciones, volúmenes, saldos, recibos, IVA, nóminas, RBU, planes, incidencias, certificados y cuentas nuevas) en una tabla de formato largo. Las vistas planas del libro, de las declaraciones y de los recibos permiten cruzar cualquier dato.
+
+### Decisiones nuevas que la Junta debe confirmar
+
+| Ref. | Decisión | Criterio aplicado |
+|---|---|---|
+| D13 | Umbral de retención | 50.000 Pz |
+| D14 | Variación que obliga a retener | 300 % |
+| D15 | Día de cierre | 6 de cada mes |
+| D16 | Presunción de venta en cobros comerciales | Sí, con justificación posterior |
+| D17 | Bases de IRM, IRP, IGF, IPE, IBA e ITP | Las de Art. T119 |

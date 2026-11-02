@@ -5,9 +5,9 @@ type S = { key: string; category: string; description: string; vtype: string; al
 type C = { id: string; key: string; bank_id: string | null; new_value: unknown; old_value: unknown; reason: string };
 export default function Settings() {
   const [tok, setTok] = useState("");
-  useEffect(() => { sb().auth.getSession().then(({ data }) => { if (data.session) { setTok(data.session.access_token); load(data.session.access_token); } }); }, []); const [d, setD] = useState<{ settings: S[]; pending: C[]; banks: { id: string; code: string; name: string }[] } | null>(null); const [msg, setMsg] = useState("");
+  useEffect(() => { sb().auth.getSession().then(({ data }: { data: { session: { access_token: string } | null } }) => { if (data.session) { setTok(data.session.access_token); load(data.session.access_token); } }); }, []); const [d, setD] = useState<{ settings: S[]; pending: C[]; banks: { id: string; code: string; name: string }[] } | null>(null); const [msg, setMsg] = useState("");
   const [bank, setBank] = useState("");
-  const load = async (t = tok) => { const r = await fetch("/api/admin/settings", { headers: { authorization: `Bearer ${t}` } }); r.ok ? setD(await r.json().then((x) => ({ ...x, settings: x.settings ?? [], pending: x.pending ?? [], banks: x.banks ?? [] }))) : setMsg((await r.json()).error); };
+  const load = async (t = tok) => { const r = await fetch("/api/admin/settings", { headers: { authorization: `Bearer ${t}` } }); r.ok ? setD(await r.json()) : setMsg((await r.json()).error); };
   const call = async (fn: string, body: object) => { const r = await fetch(`/api/rpc/${fn}`, { method: "POST", headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json(); setMsg(r.ok ? "Hecho" : j.error); if (r.ok) load(); };
   const login = async (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); const f = new FormData(e.currentTarget);

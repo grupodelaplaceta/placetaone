@@ -1,12 +1,23 @@
-// Catálogo único de permisos de las claves de API (el servidor rechaza cualquier scope que no esté aquí)
+// Catálogo único de permisos de las claves de API. El servidor rechaza cualquier permiso que no esté aquí.
+// Cada permiso de la API pública debe estar en esta lista; lo comprueba verificacion/openapi_rutas.py.
 export const SCOPES = [
-  { k: "accounts:read", l: "Consultar cuentas y saldos" }, { k: "accounts:write", l: "Abrir cuentas desde un producto" },
-  { k: "transactions:read", l: "Ver movimientos de una cuenta" }, { k: "transfers:write", l: "Crear transferencias" }, { k: "transfers:read", l: "Consultar una transferencia" },
-  { k: "receipts:read", l: "Ver recibos fiscales" }, { k: "cards:read", l: "Ver tarjetas de una cuenta" }, { k: "memberships:read", l: "Consultar la membresía de una cuenta Junior" }, { k: "memberships:write", l: "Renovar la membresía de una cuenta Junior" }, { k: "products:read", l: "Ver el catálogo de productos activo" },
+  { k: "accounts:read", l: "Consultar cuentas y saldos" },
+  { k: "accounts:write", l: "Abrir cuentas desde un producto" },
+  { k: "transactions:read", l: "Ver movimientos de una cuenta" },
+  { k: "transfers:write", l: "Crear transferencias" },
+  { k: "transfers:read", l: "Consultar una transferencia" },
+  { k: "receipts:read", l: "Ver recibos fiscales" },
+  { k: "cards:read", l: "Ver tarjetas de una cuenta" },
+  { k: "memberships:read", l: "Consultar la membresía de una cuenta Junior" },
+  { k: "memberships:write", l: "Renovar la membresía de una cuenta Junior" },
+  { k: "products:read", l: "Ver productos y catálogo de diseños" },
+  { k: "personas:buscar", l: "Buscar cuentas de una persona por DIP (solo en tu entidad)" },
+  { k: "usuarios:gestionar", l: "Vincular usuarios a cuentas de tu entidad" },
+  { k: "sesiones:crear", l: "Crear sesiones de usuario firmadas" },
+  { k: "origenes:gestionar", l: "Gestionar orígenes de navegador (CORS)" },
+  { k: "checkout:crear", l: "Crear y consultar pagos de la pasarela" },
+  { k: "tarjetas:cobrar", l: "Autorizar, liquidar y liberar cargos de tarjeta" },
+  { k: "nominas:read", l: "Consultar contratos de nómina de la entidad" },
+  { k: "planes:read", l: "Consultar planes y suscripciones de la entidad" },
 ] as const;
 export const SCOPE_KEYS: string[] = SCOPES.map(s => s.k);
-export const ENDPOINTS: [string, string, string][] = [
-  ["GET", "/api/v1/products", "products:read"], ["GET", "/api/v1/accounts/{iban}/membership", "memberships:read"], ["POST", "/api/v1/accounts/{iban}/membership/renew", "memberships:write"], ["POST", "/api/v1/accounts", "accounts:write"], ["GET", "/api/v1/accounts/{iban}", "accounts:read"],
-  ["GET", "/api/v1/accounts/{iban}/transactions", "transactions:read"], ["GET", "/api/v1/accounts/{iban}/receipts", "receipts:read"], ["GET", "/api/v1/accounts/{iban}/cards", "cards:read"],
-  ["POST", "/api/v1/transfers", "transfers:write"], ["GET", "/api/v1/transfers/{ref}", "transfers:read"],
-];
