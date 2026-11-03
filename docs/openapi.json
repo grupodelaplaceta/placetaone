@@ -5044,7 +5044,7 @@
     },
     "/api/v1/bk/webhooks/entregas": {
       "get": {
-        "summary": "Últimos eventos enviados a mi entidad y su estado de entrega",
+        "summary": "Eventos enviados a mi entidad: fecha, intentos y estado de entrega",
         "x-permiso": "webhooks:gestionar",
         "x-grupo": "Cuenta institucional",
         "security": [
@@ -5061,20 +5061,47 @@
                   "entregas": [
                     {
                       "id": 1062,
-                      "event": "checkout.pagado",
-                      "status": "sent"
+                      "evento": "checkout.pagado",
+                      "estado": "sent",
+                      "intentos": 1,
+                      "creada": "2026-11-01T14:05:42Z",
+                      "referencia": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15"
                     },
                     {
                       "id": 1061,
-                      "event": "checkout.confirmacion_requerida",
-                      "status": "failed"
+                      "evento": "checkout.confirmacion_requerida",
+                      "estado": "failed",
+                      "intentos": 5,
+                      "creada": "2026-11-01T14:03:11Z",
+                      "referencia": "2c1f5e0a-9b7d-4c3e-8f21-6a0d4e9b7c15"
                     }
                   ]
                 }
               }
             }
           }
-        }
+        },
+        "description": "Query: estado (pending, sent o failed) y limite (máximo 200).",
+        "parameters": [
+          {
+            "name": "estado",
+            "in": "query",
+            "required": false,
+            "description": "pending, sent o failed",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "description": "Máximo 200",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
       }
     },
     "/api/v1/bk/cuentas": {
@@ -5105,6 +5132,45 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/webhooks/entregas/{id}/reintentar": {
+      "post": {
+        "summary": "Reintentar una entrega fallida",
+        "x-permiso": "webhooks:gestionar",
+        "x-grupo": "Pasarela de pago",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la entrega",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Devuelve la entrega fallida a pendiente y pone sus intentos a cero. El envío automático la vuelve a intentar en su siguiente ejecución.",
+        "responses": {
+          "200": {
+            "description": "Reintento programado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "reintento_programado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La entrega no existe, no es de mi entidad o no está fallida"
           }
         }
       }

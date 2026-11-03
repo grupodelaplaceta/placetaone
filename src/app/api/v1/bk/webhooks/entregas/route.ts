@@ -1,10 +1,12 @@
 import { clientFrom } from "@/lib/apikey";
 
-// Últimos eventos enviados a la entidad y su estado de entrega (webhooks:gestionar)
+// Eventos enviados a la entidad: fecha, intentos y estado de entrega (webhooks:gestionar).
+// Query: estado? (pending | sent | failed), limite? (máximo 200)
 export async function GET(req: Request) {
   const a = await clientFrom(req, "webhooks:gestionar");
   if (a.err) return Response.json({ error: "Denegado" }, { status: a.err });
-  const { data, error } = await a.db.from("plone27_outbox").select("id,event,status").contains("bank_ids", [a.c.bank_id]).order("id", { ascending: false }).limit(100);
-  if (error) return Response.json({ error: "No se puede consultar" }, { status: 422 });
+  const u = new URL(req.url);
+  const { data, error } = await a.db.rpc("plone27_bk_entregas_lista", { p_bank: a.c.bank_id, p_estado: u.searchParams.get("estado"), p_limite: Number(u.searchParams.get("limite") ?? 50) });
+  if (error) return Response.json({ error: "No se pueden consultar las entregas" }, { status: 422 });
   return Response.json({ entregas: data ?? [] });
 }
