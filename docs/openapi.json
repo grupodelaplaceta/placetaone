@@ -3474,7 +3474,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Acciones nuevas: delegar (unidad, dip, permiso, limite, hasta, motivo) y revocar_delegacion (id)."
       }
     },
     "/api/v1/bk/presupuestos": {
@@ -5173,6 +5174,1995 @@
             "description": "La entrega no existe, no es de mi entidad o no está fallida"
           }
         }
+      }
+    },
+    "/api/v1/bk/empresas": {
+      "get": {
+        "summary": "Listar las empresas de mi entidad",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "empresas": [
+                    {
+                      "id": "7d1f3a2e-0001-4b5c-8d6e-9f0a1b2c3d4e",
+                      "nombre": "Comunicaciones SL",
+                      "identificador_fiscal": "B12345678",
+                      "estado": "activa",
+                      "creada": "2026-11-02T10:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Dar de alta una empresa con su titular inicial y sus cuentas de empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Empresa creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "empresa": "7d1f3a2e-0001-4b5c-8d6e-9f0a1b2c3d4e"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Cuenta no válida (debe ser de empresa y de tu entidad) o persona no válida"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nombre": "Comunicaciones SL",
+                "identificador_fiscal": "B12345678",
+                "titular_dip": "12345678Z",
+                "cuentas": [
+                  "PZ-0002-0100"
+                ]
+              }
+            }
+          }
+        },
+        "description": "El titular inicial recibe acceso a las cuentas de la empresa como holder. Las cuentas deben ser de tipo empresa y de tu entidad."
+      }
+    },
+    "/api/v1/bk/empresas/{id}": {
+      "get": {
+        "summary": "Ficha de una empresa: titulares, cuentas, pasarela y versión del contrato",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "7d1f3a2e-0001-4b5c-8d6e-9f0a1b2c3d4e",
+                  "nombre": "Comunicaciones SL",
+                  "identificador_fiscal": "B12345678",
+                  "estado": "activa",
+                  "titulares": [
+                    {
+                      "dip": "12345678Z",
+                      "rol": "titular",
+                      "desde": "2026-11-02",
+                      "hasta": null
+                    }
+                  ],
+                  "cuentas": [
+                    {
+                      "iban": "PZ-0002-0100",
+                      "nombre": "Cuenta de empresa"
+                    }
+                  ],
+                  "pasarela": {
+                    "client_id": "3c4d5e6f-0002-4a7b-9c8d-0e1f2a3b4c5d",
+                    "activa": true
+                  },
+                  "contrato_version": 1
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Empresa no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/empresas/{id}/titulares": {
+      "post": {
+        "summary": "Dar de alta un titular, autorizado o lector en la empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Titular dado de alta",
+            "content": {
+              "application/json": {
+                "example": {
+                  "titular": "5a6b7c8d-0003-4e9f-8a1b-2c3d4e5f6a7b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Solo un titular de la empresa puede dar altas"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "87654321X",
+                "rol": "autorizado",
+                "motivo": "Responsable de compras",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "description": "rol: titular (acceso completo como holder), autorizado (coholder: puede mover dinero), lector (solo consulta)."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/titulares/cese": {
+      "post": {
+        "summary": "Dar de baja a un titular de la empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cesado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La empresa necesita al menos un titular / la persona no es titular activo"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "87654321X",
+                "motivo": "Fin de la relación con la empresa",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "description": "Quita también sus accesos a las cuentas de la empresa."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/pasarela": {
+      "post": {
+        "summary": "Dar de alta la pasarela de la empresa: su cliente de API y su contrato",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Pasarela creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "client_id": "3c4d5e6f-0002-4a7b-9c8d-0e1f2a3b4c5d",
+                  "clave": "plk_9f8e7d6c5b4a39281706f5e4d3c2b1a0998877665544332211",
+                  "aviso": "Guarda la clave ahora: no se vuelve a mostrar.",
+                  "contrato": {
+                    "version": 1,
+                    "texto": "CONTRATO DE PASARELA DE PAGO\nEntidad: Banco Demo\nEmpresa: Comunicaciones SL (identificador fiscal B12345678)\n…"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La empresa ya tiene pasarela / permisos no permitidos / no eres titular"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip_actor": "12345678Z",
+                "nombre_cliente": "Pasarela Comunicaciones SL",
+                "scopes": [
+                  "checkout:crear",
+                  "branding:gestionar",
+                  "webhooks:gestionar",
+                  "origenes:gestionar",
+                  "accounts:read"
+                ]
+              }
+            }
+          }
+        },
+        "description": "La clave de la pasarela se devuelve una sola vez. El contrato describe el acceso, los permisos concedidos y las instrucciones; nunca incluye la clave. Permisos permitidos: checkout:crear, branding:gestionar, webhooks:gestionar, origenes:gestionar, accounts:read. La pasarela solo cobra a cuentas de su empresa."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/contrato": {
+      "get": {
+        "summary": "Contrato vigente de la empresa (sin claves)",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "version": 1,
+                  "texto": "CONTRATO DE PASARELA DE PAGO\n…",
+                  "creado": "2026-11-02T10:05:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La empresa no tiene contrato"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/tarjetas/{ref}/nfc": {
+      "get": {
+        "summary": "Identificador y enlace NFC de una tarjeta",
+        "x-permiso": "tarjetas:gestionar",
+        "x-grupo": "Diseños y tarjetas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "nfc_id": "NFC-4F2A9C01B7",
+                  "nfc_enlace": "https://wallet.ejemplo.es/t/8f2c1e4a",
+                  "actualizado": "2026-11-02T10:10:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tarjeta no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "Referencia de la tarjeta (física o virtual)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "summary": "Registrar o cambiar el identificador o enlace NFC de una tarjeta",
+        "x-permiso": "tarjetas:gestionar",
+        "x-grupo": "Diseños y tarjetas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "actualizado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Identificador NFC ya usado, formato no válido o tarjeta no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ref",
+            "in": "path",
+            "required": true,
+            "description": "Referencia de la tarjeta (física o virtual)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nfc_id": "NFC-4F2A9C01B7",
+                "enlace": "https://wallet.ejemplo.es/t/8f2c1e4a"
+              }
+            }
+          }
+        },
+        "description": "nfc_id: 8–64 caracteres (letras, números, : _ -), único en toda la plataforma. enlace: URL https (por ejemplo, de la wallet de una tarjeta virtual). Un campo vacío lo borra."
+      }
+    },
+    "/api/v1/bk/tasas": {
+      "get": {
+        "summary": "Listar las tasas de mi entidad sobre sus pasarelas y comercios",
+        "x-permiso": "tasas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "tasas": [
+                    {
+                      "id": "6b5a4c3d-0010-4e5f-8a9b-1c2d3e4f5a6b",
+                      "ambito": "banco",
+                      "client_id": null,
+                      "medio": "tarjeta",
+                      "tipo": "porcentaje",
+                      "valor": 0.8,
+                      "minimo": 0.1,
+                      "maximo": 5,
+                      "pagador": "comercio",
+                      "beneficiario": "banco",
+                      "activa": true,
+                      "creada": "2026-11-03T09:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear una tasa sobre los pagos de la pasarela (para mis comercios, a mi beneficio)",
+        "x-permiso": "tasas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Tasa creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "tasa": "6b5a4c3d-0010-4e5f-8a9b-1c2d3e4f5a6b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Solo puedes cobrar a tus comercios para tu propio beneficio"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "tipo": "porcentaje",
+                "valor": 0.8,
+                "minimo": 0.1,
+                "maximo": 5,
+                "medio": "tarjeta",
+                "pagador": "comercio",
+                "beneficiario": "banco"
+              }
+            }
+          }
+        },
+        "description": "tipo: fijo (importe en Pz) o porcentaje (sobre el importe del pago). minimo y maximo acotan el resultado. medio: cuenta o tarjeta (vacío = ambos). Las tasas se cobran al aprobarse el pago, al comercio."
+      }
+    },
+    "/api/v1/bk/tasas/{id}/desactivar": {
+      "post": {
+        "summary": "Desactivar una tasa de mi entidad",
+        "x-permiso": "tasas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "desactivada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Tasa no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la tasa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Las tasas ya cobradas no se modifican."
+      }
+    },
+    "/api/v1/bk/interbancarias": {
+      "get": {
+        "summary": "Operaciones interbancarias de mi entidad: pagadas por mis clientes y cobradas en mis comercios",
+        "x-permiso": "interbancarias:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "operaciones": [
+                    {
+                      "id": "9a8b7c6d-0020-4f1e-8d2c-3b4a5f6e7d8c",
+                      "referencia": "pedido-1003",
+                      "estado": "pagado",
+                      "importe": 42,
+                      "comision": 1.5,
+                      "comision_pagador": "cliente",
+                      "creada": "2026-11-02T10:00:00Z",
+                      "sentido": "pagada",
+                      "banco_destino": "BDEMO2"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD (por defecto, hace 30 días)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD (por defecto, hoy)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/interbancarias/posicion": {
+      "get": {
+        "summary": "Posición neta de mi entidad frente a cada banco en el periodo",
+        "x-permiso": "interbancarias:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "posicion": [
+                    {
+                      "banco_codigo": "BDEMO2",
+                      "banco": "Banco Ejemplo Dos",
+                      "enviado": 1200,
+                      "recibido": 850,
+                      "neto": -350
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "enviado: lo que mis clientes han pagado a comercios de ese banco. recibido: lo que sus clientes han pagado a mis comercios. neto negativo: debo a ese banco."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/pasarela/rotar": {
+      "post": {
+        "summary": "Rotar la clave de la pasarela de una empresa. La anterior deja de valer",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clave rotada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "client_id": "3c4d5e6f-0002-4a7b-9c8d-0e1f2a3b4c5d",
+                  "clave": "plk_0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7",
+                  "aviso": "Guarda la clave ahora: no se vuelve a mostrar. La anterior ya no funciona."
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Empresa no activa, sin pasarela o la persona no es titular"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "description": "Solo un titular activo de la empresa puede rotar su clave. La clave nueva se devuelve una sola vez."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/estado": {
+      "post": {
+        "summary": "Activar, suspender o dar de baja una empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado actualizado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "estado_actualizado": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Estado no válido, empresa no encontrada o la persona no es titular"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "estado": "suspendida",
+                "motivo": "Revisión de cumplimiento",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "description": "Suspender o dar de baja desactiva la pasarela de la empresa (sus claves dejan de funcionar). Volver a activar la restaura."
+      }
+    },
+    "/api/v1/me/exportar": {
+      "get": {
+        "summary": "Exportar mis datos (acceso y portabilidad)",
+        "x-permiso": "me:read",
+        "x-grupo": "Usuario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Devuelve tus datos: perfil, cuentas con su detalle, tarjetas (sin número), beneficiarios, sesiones (sin tokens) y la primera página de movimientos de cada cuenta. Los movimientos completos se obtienen paginando GET /api/v1/me/accounts/{iban}/transactions.",
+        "responses": {
+          "200": {
+            "description": "Exportación",
+            "content": {
+              "application/json": {
+                "example": {
+                  "exportado_en": "2026-11-04T10:00:00Z",
+                  "perfil": {
+                    "dip": "12345678Z"
+                  },
+                  "cuentas": [],
+                  "beneficiarios": [],
+                  "sesiones": [],
+                  "aviso": "Movimientos: primera página de cada cuenta."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/deudas": {
+      "get": {
+        "summary": "Mis deudas en las cuentas a las que tengo acceso",
+        "x-permiso": "me:read",
+        "x-grupo": "Usuario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Pendiente = principal + cargos autorizados − pagado.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "deudas": [
+                    {
+                      "id": "4a1b2c3d-0030-4e5f-8a6b-7c8d9e0f1a2b",
+                      "ref": "DEU-000123",
+                      "cuenta": "PZ-0001-0002",
+                      "acreedor": "PZ-0002-0100",
+                      "principal": 500,
+                      "cargos_autorizados": 0,
+                      "pagado": 120,
+                      "pendiente": 380,
+                      "vencimiento": "2026-10-31",
+                      "en_disputa": false,
+                      "concepto": "Cuota de servicio"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/deudas/{id}/pagar": {
+      "post": {
+        "summary": "Pagar una deuda (parcial o total)",
+        "x-permiso": "me:transfer",
+        "x-grupo": "Usuario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Requiere permiso de escritura en la cuenta deudora. No se puede pagar una deuda en disputa.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "9c8b7a6d-0040-4e3f-8d2c-1b0a9f8e7d6c"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Deuda no encontrada, en disputa, sin permiso o importe mayor que lo pendiente"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la deuda",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "8 a 80 caracteres [A-Za-z0-9_-]. Repetir la misma clave no repite el pago.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "importe": 100
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/deudas/{id}/disputa": {
+      "post": {
+        "summary": "Reclamar sobre una deuda pagada",
+        "x-permiso": "me:disputas",
+        "x-grupo": "Usuario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Solo hasta lo pagado. Plazo: los días configurados desde el vencimiento (por defecto 60). Una reclamación abierta por deuda. La deuda queda en disputa y no se cobra hasta resolverla. Requiere el permiso me:disputas, que el banco solicita al abrir la sesión.",
+        "responses": {
+          "201": {
+            "description": "Reclamación abierta",
+            "content": {
+              "application/json": {
+                "example": {
+                  "disputa": "7e6d5c4b-0050-4a3b-9c8d-2e1f0a9b8c7d"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Importe mayor que lo pagado, plazo vencido, o ya hay una reclamación abierta"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la deuda",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "monto": 50,
+                "motivo": "Cargo duplicado en el mes de octubre"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/disputas": {
+      "get": {
+        "summary": "Mis reclamaciones sobre deudas",
+        "x-permiso": "me:read",
+        "x-grupo": "Usuario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Estados: abierta, devuelta, rechazada.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "disputas": [
+                    {
+                      "id": "7e6d5c4b-0050-4a3b-9c8d-2e1f0a9b8c7d",
+                      "debt_id": "4a1b2c3d-0030-4e5f-8a6b-7c8d9e0f1a2b",
+                      "estado": "abierta",
+                      "monto_reclamado": 50,
+                      "monto_devuelto": 0,
+                      "motivo": "Cargo duplicado en el mes de octubre",
+                      "plazo_resolucion": "2026-12-04",
+                      "creada": "2026-11-04T10:00:00Z",
+                      "resuelta": null
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/branding/logo": {
+      "post": {
+        "summary": "Subir el logo de mi entidad",
+        "x-permiso": "branding:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "description": "PNG, JPG o WEBP de hasta 512 KB. Se comprueba el contenido real del archivo. Se guarda en el bucket público branding.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "imagen": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Logo subido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "logo_url": "https://xyz.supabase.co/storage/v1/object/public/branding/banco/1/1730000000000.png"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Formato, tamaño o imagen no válidos"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/comercio/logo": {
+      "post": {
+        "summary": "Subir el logo de este comercio",
+        "x-permiso": "branding:gestionar",
+        "x-grupo": "Pasarela de pago",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "description": "Igual que el logo de la entidad: PNG, JPG o WEBP de hasta 512 KB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "imagen": "data:image/webp;base64,UklGRiQAAABXRUJQ..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Logo subido",
+            "content": {
+              "application/json": {
+                "example": {
+                  "logo_url": "https://xyz.supabase.co/storage/v1/object/public/branding/comercio/3/1730000000001.webp"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Formato, tamaño o imagen no válidos"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/categorias": {
+      "get": {
+        "summary": "Categorías de comercio que asigna Placeta",
+        "x-permiso": "politicas:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "categorias": [
+                    {
+                      "codigo": "alimentacion",
+                      "nombre": "Alimentación"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Las categorías se usan en las reglas de uso para limitar dónde se puede gastar."
+      }
+    },
+    "/api/v1/bk/comercios": {
+      "get": {
+        "summary": "Directorio de comercios (cuentas de empresa activas) con su categoría",
+        "x-permiso": "politicas:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "comercios": [
+                    {
+                      "iban": "PZ-0003-0300",
+                      "nombre": "Farmacia Central",
+                      "categoria": "salud",
+                      "banco": "BDEMO3"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "No muestra saldos. Sirve para elegir comercios concretos al definir una regla."
+      }
+    },
+    "/api/v1/bk/tipos-destino": {
+      "get": {
+        "summary": "Tipos de cuenta de destino que existen en la plataforma",
+        "x-permiso": "politicas:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "tipos": [
+                    {
+                      "codigo": "personal",
+                      "nombre": "Cuentas personales"
+                    },
+                    {
+                      "codigo": "business",
+                      "nombre": "Cuentas de empresa (comercios)"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/programas": {
+      "get": {
+        "summary": "Programas de subvención o bono de mi entidad",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "programas": [
+                    {
+                      "id": "5b4a3c2d-0100-4e3f-8a9b-1c2d3e4f5a6b",
+                      "nombre": "Ayuda de transporte 2026",
+                      "tipo": "bono",
+                      "presupuesto": 50000,
+                      "cuenta_fondos": "PZ-0002-0100",
+                      "concesiones": 12
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear un programa de subvención o bono",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Programa creado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "programa": "5b4a3c2d-0100-4e3f-8a9b-1c2d3e4f5a6b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Tipo, presupuesto o cuenta de fondos no válidos"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nombre": "Ayuda de transporte 2026",
+                "tipo": "bono",
+                "presupuesto": 50000,
+                "cuenta_fondos": "PZ-0002-0100"
+              }
+            }
+          }
+        },
+        "description": "tipo: subvencion o bono. La cuenta de fondos debe ser de tu entidad: de ella sale el dinero al pagar."
+      }
+    },
+    "/api/v1/bk/programas/{id}/concesiones": {
+      "get": {
+        "summary": "Concesiones de un programa",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "concesiones": [
+                    {
+                      "id": "6c5b4a3d-0101-4f40-9b0a-2d3e4f5a6b7c",
+                      "ref": "CON-000041",
+                      "programa_id": "5b4a3c2d-0100-4e3f-8a9b-1c2d3e4f5a6b",
+                      "programa": "Ayuda de transporte 2026",
+                      "beneficiario": "PZ-0001-0002",
+                      "concedido": 600,
+                      "aprobado": 120,
+                      "pagado": 120
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Conceder un importe máximo a un beneficiario dentro del programa",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Concesión creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "concesion": "6c5b4a3d-0101-4f40-9b0a-2d3e4f5a6b7c"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Programa o beneficiario no válidos"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "beneficiario": "PZ-0001-0002",
+                "concedido": 600
+              }
+            }
+          }
+        },
+        "description": "El beneficiario debe ser una cuenta activa de tu entidad. El importe concedido es el tope de lo que puede justificar."
+      }
+    },
+    "/api/v1/bk/justificaciones": {
+      "get": {
+        "summary": "Justificaciones de gasto (todas o de una concesión)",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "justificaciones": [
+                    {
+                      "id": "7d6c5b4a-0102-4a51-8c1d-3e4f5a6b7c8d",
+                      "grant_id": "6c5b4a3d-0101-4f40-9b0a-2d3e4f5a6b7c",
+                      "transaction_id": "8e7d6c5b-0103-4b62-9d2e-4f5a6b7c8d9e",
+                      "factura": "F-2026-0091",
+                      "importe": 120,
+                      "estado": "pending",
+                      "reembolso": null
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "concesion",
+            "in": "query",
+            "required": false,
+            "description": "Filtrar por concesión",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Justificar un gasto ya hecho por el beneficiario",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Justificación creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "justificacion": "7d6c5b4a-0102-4a51-8c1d-3e4f5a6b7c8d"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "El gasto no cumple las reglas del programa o supera lo concedido"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "concesion": "6c5b4a3d-0101-4f40-9b0a-2d3e4f5a6b7c",
+                "transaccion": "8e7d6c5b-0103-4b62-9d2e-4f5a6b7c8d9e",
+                "factura": "F-2026-0091",
+                "importe": 120
+              }
+            }
+          }
+        },
+        "description": "Si el programa tiene reglas de uso, se comprueba que el gasto sea de la cuenta beneficiaria y que su destino cumpla la regla (tipo de cuenta, comercio o categoría)."
+      }
+    },
+    "/api/v1/bk/justificaciones/{id}/pagar": {
+      "post": {
+        "summary": "Aprobar y pagar una justificación (transfiere desde la cuenta de fondos)",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "9a8b7c6d-0105-4d84-9f4a-6b7c8d9e0f1a"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Justificación no encontrada, sin saldo en la cuenta de fondos o ya pagada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Recomendada. Repetir la misma clave no repite el pago.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Mueve dinero. Repetir con la misma Idempotency-Key no vuelve a pagar."
+      }
+    },
+    "/api/v1/bk/justificaciones/{id}/rechazar": {
+      "post": {
+        "summary": "Rechazar una justificación pendiente",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "rechazada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No pendiente o no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "motivo": "Factura ilegible"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/politicas": {
+      "get": {
+        "summary": "Reglas de uso de mi entidad (RBU y programas)",
+        "x-permiso": "politicas:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "politicas": [
+                    {
+                      "id": "9f8e7d6c-0104-4c73-8e3f-5a6b7c8d9e0f",
+                      "ambito": "rbu",
+                      "programa_id": null,
+                      "programa": null,
+                      "tipos": [
+                        "business"
+                      ],
+                      "comercios": [],
+                      "categorias": [
+                        "alimentacion",
+                        "salud"
+                      ],
+                      "activa": true,
+                      "creada": "2026-11-04T09:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Sin regla activa no hay restricción. Cada filtro configurado debe cumplirse."
+      },
+      "post": {
+        "summary": "Crear una regla de uso (sustituye a la activa del mismo ámbito)",
+        "x-permiso": "politicas:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Regla creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "politica": "9f8e7d6c-0104-4c73-8e3f-5a6b7c8d9e0f"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Programa, categoría, comercio o tipo no válidos"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "ambito": "rbu",
+                "tipos": [
+                  "business"
+                ],
+                "categorias": [
+                  "alimentacion",
+                  "salud"
+                ]
+              }
+            }
+          }
+        },
+        "description": "ambito: rbu (la tarjeta prepago RBU de tu entidad) o programa (con programa). tipos: tipos de cuenta de destino permitidos. comercios: ids de cuentas de empresa. categorias: categorías de comercio. Un filtro vacío no restringe."
+      }
+    },
+    "/api/v1/bk/politicas/{id}/desactivar": {
+      "post": {
+        "summary": "Desactivar una regla de uso",
+        "x-permiso": "politicas:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "desactivada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Regla no encontrada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/empresas/{id}/ficha": {
+      "get": {
+        "summary": "Ficha completa de la empresa: entidad, organigrama, presupuesto por departamento y nóminas",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "description": "Presupuesto del ejercicio en curso por departamento: asignado, pagado y comprometido (gastos propuestos o aprobados). Nóminas pagadas agrupadas por mes.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ficha",
+            "content": {
+              "application/json": {
+                "example": {
+                  "empresa": {
+                    "nombre": "Comunicaciones SL",
+                    "identificador_fiscal": "B12345678",
+                    "estado": "activa"
+                  },
+                  "entidad": {
+                    "cip": "CIP-00000001",
+                    "nombre": "Administración Demo",
+                    "activa": true
+                  },
+                  "ejercicio": 2026,
+                  "organigrama": [
+                    {
+                      "id": "u1",
+                      "padre": null,
+                      "tipo": "administracion",
+                      "nombre": "Administración",
+                      "codigo": "ADM",
+                      "activa": true
+                    }
+                  ],
+                  "departamentos": [
+                    {
+                      "id": "u1",
+                      "nombre": "Administración",
+                      "tipo": "administracion",
+                      "presupuesto_anual": 45000,
+                      "pagado": 12000,
+                      "comprometido": 3000
+                    }
+                  ],
+                  "nominas": [
+                    {
+                      "periodo": "2026-10",
+                      "pagos": 14,
+                      "total": 21000
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Empresa no encontrada"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/entidad": {
+      "post": {
+        "summary": "Vincular la entidad institucional (CIP) a la empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "description": "Una entidad solo puede estar vinculada a una empresa, y debe ser de tu entidad. Lo pide un titular activo de la empresa.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "cip": "CIP-00000001",
+                "dip_actor": "12345678Z"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vinculada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "vinculada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Entidad no válida, ya vinculada o el actor no es titular"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/clientes": {
+      "get": {
+        "summary": "Claves de API de mi entidad (sin claves)",
+        "x-permiso": "clientes:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "clientes": [
+                    {
+                      "id": "c1d2e3f4-0200-4a5b-8c6d-7e8f9a0b1c2d",
+                      "name": "Banca web",
+                      "scopes": [
+                        "accounts:read",
+                        "transactions:read"
+                      ],
+                      "rate_limit": 60,
+                      "active": true,
+                      "created_at": "2026-11-04T09:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear una clave de API para mi entidad",
+        "x-permiso": "clientes:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Clave creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "c1d2e3f4-0200-4a5b-8c6d-7e8f9a0b1c2d",
+                  "api_key": "plk_9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+                  "aviso": "Guarda la clave ahora: no se vuelve a mostrar."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Nombre, permisos o límite no válidos"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nombre": "Banca web",
+                "permisos": [
+                  "accounts:read",
+                  "transactions:read"
+                ],
+                "limite": 60
+              }
+            }
+          }
+        },
+        "description": "Solo se pueden conceder permisos de la lista oficial de la plataforma. La clave se devuelve una sola vez."
+      }
+    },
+    "/api/v1/bk/clientes/{id}/rotar": {
+      "post": {
+        "summary": "Rotar la clave de una clave de API de mi entidad",
+        "x-permiso": "clientes:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "api_key": "plk_0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+                  "aviso": "Guarda la clave ahora: no se vuelve a mostrar. La anterior ya no funciona."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clave no encontrada en tu entidad"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/clientes/{id}/desactivar": {
+      "post": {
+        "summary": "Desactivar una clave de API de mi entidad",
+        "x-permiso": "clientes:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "desactivada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No puedes desactivar la clave con la que llamas"
+          },
+          "404": {
+            "description": "Clave no encontrada en tu entidad"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/disputas": {
+      "get": {
+        "summary": "Reclamaciones de deudas que afectan a mi entidad (como acreedor o como deudor)",
+        "x-permiso": "disputas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "disputas": [
+                    {
+                      "id": "7e6d5c4b-0050-4a3b-9c8d-2e1f0a9b8c7d",
+                      "debt_id": "4a1b2c3d-0030-4e5f-8a6b-7c8d9e0f1a2b",
+                      "estado": "abierta",
+                      "monto_reclamado": 50,
+                      "monto_devuelto": 0,
+                      "motivo": "Cargo duplicado en octubre",
+                      "plazo_resolucion": "2026-12-04",
+                      "creada": "2026-11-04T10:00:00Z",
+                      "rol": "acreedor"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "rol: acreedor (mi entidad debe devolver) o deudor (un cliente mío reclama)."
+      }
+    },
+    "/api/v1/bk/disputas/{id}/resolver": {
+      "post": {
+        "summary": "Resolver una reclamación como banco acreedor",
+        "x-permiso": "disputas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "estado": "devuelta",
+                  "transaccion": "5e4d3c2b-0300-4f1a-8b2c-3d4e5f6a7b8c",
+                  "monto": 50
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Solo el banco acreedor puede resolver / importe no válido / pendiente de segunda aprobación"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "decision": "devolucion",
+                "monto": 50,
+                "operador": "operador-07"
+              }
+            }
+          }
+        },
+        "description": "decision: devolucion o rechazada. Las devoluciones de más de 1.000 Pz requieren dos operadores distintos: el primero deja constancia (estado pendiente_segunda_aprobacion) y el segundo ejecuta."
       }
     }
   },

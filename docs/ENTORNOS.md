@@ -11,3 +11,7 @@
 5. Activa copias automáticas (PITR) en el proyecto de producción de Supabase.
 6. Seguridad del personal: en Supabase → Authentication activa MFA (TOTP), contraseñas fuertes y límites de intentos; desactiva el registro público de usuarios.
 7. Configuración: todo ajuste operativo vive en `/admin/settings` (global o por entidad, dentro de límites centrales; los sensibles exigen una segunda persona).
+
+
+## Cifrado de secretos de webhook
+- `WEBHOOK_KEY`: mínimo 24 caracteres. Sin esta variable no se pueden crear ni rotar webhooks, y el envío de eventos falla. Guárdala solo en el gestor de secretos de Vercel; cambiarla invalida los secretos existentes (hay que rotar los webhooks).

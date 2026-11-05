@@ -24,5 +24,7 @@ else
   echo "OMITIDO: define DATABASE_URL y ten psql instalado para aplicar y probar el SQL."
   fallos=$((fallos+0))
 fi
+echo "== Coherencia de llamadas RPC (paso 7)"
+if python3 rpc_coherencia.py .. ; then :; else fallos=$((fallos+1)); fi
 echo; if [ $fallos -eq 0 ]; then echo "VERIFICACIÓN: todos los pasos obligatorios pasan."; else echo "VERIFICACIÓN: $fallos paso(s) fallan."; fi
 exit $fallos

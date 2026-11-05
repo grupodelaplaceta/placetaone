@@ -13,6 +13,8 @@ export async function staffFrom(req: Request, roles: string[]) {
     try { if (JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString()).aal !== "aal2") return null; } catch { return null; }
   }
   const { data: s } = await db.from("plone27_staff").select("role,active,bank_id").eq("user_id", data.user.id).maybeSingle();
-  if (!s?.active || !(s.role === "admin" || roles.includes(s.role))) return null;
+  // El panel de Placeta es solo para la Junta (rol admin). El resto del personal opera desde la API de su banco.
+  void roles;
+  if (!s?.active || s.role !== "admin") return null;
   return { id: data.user.id, role: s.role as string, bank: (s.bank_id as string | null) ?? null, db };
 }

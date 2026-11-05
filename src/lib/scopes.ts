@@ -37,5 +37,13 @@ export const SCOPES = [
   { k: "pasarela:configurar", l: "Activar la pasarela de la entidad y fijar sus parámetros" },
   { k: "branding:gestionar", l: "Fijar el logo, colores y nombre que se muestran en la ventana de pago" },
   { k: "webhooks:gestionar", l: "Dar de alta, rotar y dar de baja webhooks, y consultar las entregas" },
+  { k: "empresas:gestionar", l: "Gestionar empresas, sus titulares y su pasarela" },
+  { k: "tarjetas:gestionar", l: "Registrar el identificador o enlace NFC de las tarjetas" },
+  { k: "tasas:gestionar", l: "Gestionar las tasas de sus pasarelas y de sus comercios" },
+  { k: "interbancarias:gestionar", l: "Consultar las operaciones interbancarias y la posición neta de la entidad" },
+  { k: "subvenciones:gestionar", l: "Gestionar programas de subvención o bono, concesiones y justificaciones" },
+  { k: "politicas:gestionar", l: "Definir reglas de uso (tipos de cuenta, comercios y categorías) para RBU y subvenciones" },
+  { k: "clientes:gestionar", l: "Crear, rotar y desactivar las claves de API de su entidad" },
+  { k: "disputas:gestionar", l: "Ver y resolver las reclamaciones de deudas de su entidad como banco acreedor" },
 ] as const;
 export const SCOPE_KEYS: string[] = SCOPES.map(s => s.k);

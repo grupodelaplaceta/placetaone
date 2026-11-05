@@ -1,3 +1,4 @@
+import { descifrarSecreto } from "@/lib/cifrado";
 import { createHmac } from "crypto";
 import { admin } from "@/lib/supabase";
 // Vercel Cron envía Authorization: Bearer $CRON_SECRET
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
       const body = JSON.stringify({ id: e.id, event: e.event, data: e.payload });
       try {
         const r = await fetch(h.url, { method: "POST", signal: AbortSignal.timeout(8000),
-          headers: { "content-type": "application/json", "x-placeta-signature": createHmac("sha256", h.secret).update(body).digest("hex") }, body });
+          headers: { "content-type": "application/json", "x-placeta-signature": createHmac("sha256", descifrarSecreto(h.secret)).update(body).digest("hex") }, body });
         ok = ok && r.ok;
       } catch { ok = false; }
     }

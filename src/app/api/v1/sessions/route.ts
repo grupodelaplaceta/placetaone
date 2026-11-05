@@ -6,7 +6,7 @@ import { respuesta, preflight, normalizarDip } from "@/lib/sesion";
 export const OPTIONS = preflight;
 
 // Permisos que puede recibir un usuario. El banco pide cuáles; nunca puede ganar más que su cliente.
-const PERMISOS_USUARIO = ["me:read", "me:transfer", "me:contratar", "me:seguridad"];
+const PERMISOS_USUARIO = ["me:read", "me:transfer", "me:contratar", "me:seguridad", "me:disputas"];
 
 // Crear sesión de usuario. Solo desde el servidor del banco: clave + firma HMAC + ventana de 5 minutos + nonce único.
 export async function POST(req: Request) {

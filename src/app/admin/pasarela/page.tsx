@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 type Banco = { id: string; code: string; name: string; nombre_visible?: string | null };
 type Config = { activa: boolean; minutos_defecto: number; importe_maximo: number; destinos: string[] } | null;
 type Brand = { nombre_visible?: string | null; logo_url?: string | null; color_principal?: string | null; texto_pie?: string | null } | null;
-type Hook = { id: string; url: string; events: string[]; active: boolean };
+type Hook = { id: string; url: string; events: string[]; active: boolean; cifrado?: boolean };
 type Entrega = { id: number; evento: string; estado: string; intentos: number; creada: string; referencia?: string | null };
 type Datos = { bancos?: Banco[]; config?: Config; branding?: Brand; webhooks?: Hook[]; entregas?: Entrega[] };
 
@@ -95,6 +95,7 @@ export default function PasarelaAdmin() {
           </Card>
 
           <Card titulo="Webhooks">
+            <button className="btn" onClick={() => accion({ accion: "desactivar_sin_cifrar" }, "Webhooks con secreto en claro desactivados. Cada banco debe rotar su secreto para volver a recibir eventos.")}>Desactivar los que tienen secreto en claro</button>
             {secreto && (
               <div style={{ background: "#fef3c7", padding: 10, borderRadius: 6, marginBottom: 10 }}>
                 <strong>Secreto nuevo:</strong> <code style={{ wordBreak: "break-all" }}>{secreto}</code>
@@ -107,7 +108,7 @@ export default function PasarelaAdmin() {
               <tbody>
                 {(datos.webhooks ?? []).map((h) => (
                   <tr key={h.id}>
-                    <td className="mono">{h.url}</td><td>{h.events.join(", ")}</td><td>{h.active ? "sí" : "no"}</td>
+                    <td className="mono">{h.url}</td><td>{h.events.join(", ")}</td><td>{h.active ? "sí" : "no"} · {h.cifrado ? <Badge tono="ok">cifrado</Badge> : <Badge tono="bad">en claro</Badge>}</td>
                     <td>
                       <button className="btn" onClick={() => accion({ accion: "webhook_rotar", id: h.id }, "Secreto rotado.")}>Rotar secreto</button>{" "}
                       <button className="btn" onClick={() => accion({ accion: "webhook_baja", id: h.id }, "Webhook dado de baja.")}>Dar de baja</button>

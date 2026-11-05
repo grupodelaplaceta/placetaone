@@ -1,3 +1,4 @@
+import { cifrarSecreto, descifrarSecreto } from "@/lib/cifrado";
 import { staffFrom } from "@/lib/supabase";
 import { hexAleatorio } from "@/lib/apikey";
 
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
   const [cfg, brand, hooks, entregas] = await Promise.all([
     s.db.from("plone27_pasarela_config").select("activa,minutos_defecto,importe_maximo,destinos").eq("bank_id", bankId).maybeSingle(),
     s.db.from("plone27_banks").select("nombre_visible,logo_url,color_principal,texto_pie").eq("id", bankId).maybeSingle(),
-    s.db.from("plone27_webhooks").select("id,url,events,active").eq("bank_id", bankId),
+    s.db.from("plone27_webhooks").select("id,url,events,active,cifrado").eq("bank_id", bankId),
     s.db.rpc("plone27_bk_entregas_lista", { p_bank: bankId, p_estado: null, p_limite: 50 }),
   ]);
   const error = cfg.error || brand.error || hooks.error || entregas.error;
@@ -44,12 +45,12 @@ export async function POST(req: Request) {
   if (accion === "webhook_crear") {
     const secreto = hexAleatorio(24);
     const eventos = Array.isArray(b?.eventos) ? b.eventos.map(String) : [];
-    const r = await s.db.rpc("plone27_bk_webhook_crear", { p_bank: bank, p_url: String(b?.url ?? ""), p_eventos: eventos, p_secret: secreto });
+    const r = await s.db.rpc("plone27_bk_webhook_crear", { p_bank: bank, p_url: String(b?.url ?? ""), p_eventos: eventos, p_secret: cifrarSecreto(secreto) });
     return r.error ? fail(r.error.message) : Response.json({ ok: true, secreto, id: r.data });
   }
   if (accion === "webhook_rotar") {
     const secreto = hexAleatorio(24);
-    const r = await s.db.rpc("plone27_bk_webhook_rotar", { p_bank: bank, p_id: String(b?.id ?? ""), p_secret: secreto });
+    const r = await s.db.rpc("plone27_bk_webhook_rotar", { p_bank: bank, p_id: String(b?.id ?? ""), p_secret: cifrarSecreto(secreto) });
     return r.error ? fail(r.error.message) : Response.json({ ok: true, secreto });
   }
   if (accion === "webhook_baja") {
@@ -59,6 +60,10 @@ export async function POST(req: Request) {
   if (accion === "entrega_reintentar") {
     const r = await s.db.rpc("plone27_bk_entrega_reintentar", { p_bank: bank, p_id: Number(b?.id) });
     return r.error ? fail(r.error.message) : Response.json({ ok: true });
+  }
+  if (accion === "desactivar_sin_cifrar") {
+    const r = await s.db.rpc("plone27_webhooks_desactivar_sin_cifrar", { p_actor: s.id });
+    return r.error ? fail(r.error.message) : Response.json({ ok: true, desactivados: r.data });
   }
   return Response.json({ error: "Acción no válida" }, { status: 400 });
 }

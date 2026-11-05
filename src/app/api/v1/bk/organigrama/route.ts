@@ -36,6 +36,18 @@ export async function POST(req: Request) {
     res = await a.db.rpc("plone27_org_nombrar", { p_bank: a.c.bank_id, p_cip: cip, p_actor: actorRes.data, p_puesto: String(b?.puesto ?? ""), p_persona: persona.data, p_motivo: String(b?.motivo ?? "") });
     return res.error ? Response.json({ error: res.error.message }, { status: 422 }) : Response.json({ nombramiento: res.data }, { status: 201 });
   }
+  if (accion === "delegar") {
+    const persona = await a.db.rpc("plone27_persona", { p_dip: String(b?.dip ?? "") });
+    if (persona.error) return Response.json({ error: persona.error.message }, { status: 422 });
+    res = await a.db.rpc("plone27_org_delegar", { p_bank: a.c.bank_id, p_cip: cip, p_actor: actorRes.data, p_unidad: String(b?.unidad ?? ""),
+      p_persona: persona.data, p_permiso: String(b?.permiso ?? ""), p_limite: b?.limite ? Number(b.limite) : null,
+      p_hasta: b?.hasta ? String(b.hasta) : null, p_motivo: String(b?.motivo ?? "") });
+    return res.error ? Response.json({ error: res.error.message }, { status: 422 }) : Response.json({ delegado: true });
+  }
+  if (accion === "revocar_delegacion") {
+    res = await a.db.rpc("plone27_org_revocar_delegacion", { p_bank: a.c.bank_id, p_cip: cip, p_actor: actorRes.data, p_id: String(b?.id ?? "") });
+    return res.error ? Response.json({ error: res.error.message }, { status: 422 }) : Response.json({ revocada: true });
+  }
   if (accion === "cesar") {
     res = await a.db.rpc("plone27_org_cesar", { p_bank: a.c.bank_id, p_cip: cip, p_actor: actorRes.data, p_nombramiento: String(b?.nombramiento ?? ""), p_motivo: String(b?.motivo ?? "") });
     return res.error ? Response.json({ error: res.error.message }, { status: 422 }) : Response.json({ cesado: true });

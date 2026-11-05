@@ -1,3 +1,12 @@
+-- Antes de crear nada: borra TODAS las variantes existentes de plone27_checkout_create (cualquier firma y nombre de parámetro).
+-- Evita el error 42P13 cuando la base conserva una versión anterior con otros nombres de parámetros.
+do $$ declare r record; begin
+  for r in select p.oid::regprocedure::text as f from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+           where n.nspname='public' and p.proname='plone27_checkout_create' loop
+    execute 'drop function if exists '||r.f;
+  end loop;
+end $$;
+
 -- =====================================================================================================
 -- PLACETA ONE · INSTALACIÓN COMPLETA DE LA BASE DE DATOS (un solo archivo)
 -- Grupo de La Placeta · Plan 2027
@@ -6344,6 +6353,1504 @@ language sql stable security definer set search_path=public as $$
     where p_bank=any(o.bank_ids) and (p_estado is null or o.status=p_estado)
     order by o.id desc limit least(greatest(coalesce(p_limite,50),1),200)) x $$;
 
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0036_plone27_empresas_pasarelas_nfc.sql) ====================
+-- Placeta One · 0036 · Empresas (titulares y cuentas), pasarela por empresa con su propio cliente de API,
+-- contratos versionados y identificadores NFC de tarjetas. Requiere 0035. Idempotente.
+
+-- ---------- Empresas ----------
+create table if not exists plone27_empresas(
+  id uuid primary key default gen_random_uuid(),
+  bank_id uuid not null references plone27_banks,
+  nombre text not null check(length(nombre) between 2 and 120),
+  identificador_fiscal text not null check(length(identificador_fiscal) between 5 and 20),
+  estado text not null default 'activa' check(estado in('activa','suspendida','baja')),
+  creada timestamptz not null default now(),
+  unique(bank_id,identificador_fiscal));
+
+create table if not exists plone27_empresa_cuentas(
+  empresa_id uuid not null references plone27_empresas(id),
+  account_id uuid not null references plone27_accounts,
+  primary key(empresa_id,account_id));
+
+create table if not exists plone27_empresa_titulares(
+  id uuid primary key default gen_random_uuid(),
+  empresa_id uuid not null references plone27_empresas(id),
+  persona uuid not null references plone27_personas,
+  rol text not null check(rol in('titular','autorizado','lector')),
+  desde date not null default current_date,
+  hasta date,
+  motivo text not null check(length(motivo) between 5 and 300),
+  alta_por uuid,
+  check(hasta is null or hasta>=desde));
+create unique index if not exists plone27_empresa_titular_activo_ux on plone27_empresa_titulares(empresa_id,persona) where hasta is null;
+
+-- ---------- Pasarela de la empresa: un cliente de API propio ----------
+create table if not exists plone27_empresa_pasarelas(
+  empresa_id uuid primary key references plone27_empresas(id),
+  client_id uuid not null unique references plone27_api_clients,
+  activa boolean not null default true,
+  creada timestamptz not null default now());
+
+-- ---------- Contratos versionados (sin claves) ----------
+create table if not exists plone27_empresa_contratos(
+  id uuid primary key default gen_random_uuid(),
+  empresa_id uuid not null references plone27_empresas(id),
+  version int not null check(version>=1),
+  texto text not null check(length(texto)<=20000),
+  creado timestamptz not null default now(),
+  unique(empresa_id,version));
+
+-- ---------- NFC de tarjetas (físicas o virtuales) ----------
+alter table plone27_cards add column if not exists nfc_id text check(nfc_id is null or nfc_id ~ '^[A-Za-z0-9:_-]{8,64}$');
+alter table plone27_cards add column if not exists nfc_enlace text check(nfc_enlace is null or nfc_enlace ~ '^https://[^\s]+$');
+alter table plone27_cards add column if not exists nfc_actualizado timestamptz;
+create unique index if not exists plone27_cards_nfc_id_ux on plone27_cards(nfc_id);
+
+-- ---------- Las empresas solo cobran a sus propias cuentas (regla de base de datos) ----------
+create or replace function plone27_trg_checkout_empresa() returns trigger
+language plpgsql set search_path=public as $$
+#variable_conflict use_column
+declare emp uuid; begin
+  select pe.empresa_id into emp from plone27_empresa_pasarelas pe where pe.client_id=new.client_id and pe.activa;
+  if emp is not null and not exists(select 1 from plone27_empresa_cuentas ec where ec.empresa_id=emp and ec.account_id=new.cuenta_destino) then
+    raise exception 'Esta pasarela solo cobra a las cuentas de su empresa';
+  end if;
+  return new; end $$;
+drop trigger if exists trg_checkout_empresa on plone27_checkouts;
+drop trigger if exists trg_checkout_empresa on plone27_checkouts;
+create trigger trg_checkout_empresa before insert on plone27_checkouts
+  for each row execute function plone27_trg_checkout_empresa();
+
+-- ---------- Funciones de gestión ----------
+create or replace function plone27_empresa_alta_completa(p_bank uuid,p_nombre text,p_fiscal text,p_persona uuid,p_ibans text[],p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare eid uuid; v_iban text; v_aid uuid; begin
+  insert into plone27_empresas(bank_id,nombre,identificador_fiscal) values(p_bank,p_nombre,upper(p_fiscal))
+    returning plone27_empresas.id into eid;
+  foreach v_iban in array coalesce(p_ibans,'{}'::text[]) loop
+    select a.id into v_aid from plone27_accounts a where a.iban=v_iban and a.bank_id=p_bank and a.kind='business' and a.status='active';
+    if v_aid is null then raise exception 'La cuenta % no es una cuenta de empresa activa de tu entidad', v_iban; end if;
+    insert into plone27_empresa_cuentas(empresa_id,account_id) values(eid,v_aid) on conflict do nothing;
+  end loop;
+  insert into plone27_empresa_titulares(empresa_id,persona,rol,motivo,alta_por)
+    values(eid,p_persona,'titular','Alta de la empresa',p_actor);
+  insert into plone27_account_members(account_id,user_id,role)
+    select ec.account_id,p_persona,'holder' from plone27_empresa_cuentas ec where ec.empresa_id=eid on conflict do nothing;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_alta','empresa',eid::text,jsonb_build_object('fiscal',upper(p_fiscal)));
+  return eid; end $$;
+
+create or replace function plone27_empresa_titular_alta(p_bank uuid,p_empresa uuid,p_persona uuid,p_rol text,p_motivo text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare tid uuid; activos int; mrole text; begin
+  if not exists(select 1 from plone27_empresas e where e.id=p_empresa and e.bank_id=p_bank and e.estado='activa') then
+    raise exception 'Empresa no encontrada o no activa';
+  end if;
+  if p_rol not in('titular','autorizado','lector') then raise exception 'Rol no válido'; end if;
+  select count(*) into activos from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.rol='titular' and t.hasta is null;
+  if activos>0 and not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede dar altas';
+  end if;
+  insert into plone27_empresa_titulares(empresa_id,persona,rol,motivo,alta_por)
+    values(p_empresa,p_persona,p_rol,p_motivo,p_actor) returning plone27_empresa_titulares.id into tid;
+  mrole:=case p_rol when 'titular' then 'holder' when 'autorizado' then 'coholder' else 'authorized' end;
+  insert into plone27_account_members(account_id,user_id,role)
+    select ec.account_id,p_persona,mrole from plone27_empresa_cuentas ec where ec.empresa_id=p_empresa on conflict do nothing;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_titular_alta','empresa',p_empresa::text,jsonb_build_object('rol',p_rol));
+  return tid; end $$;
+
+create or replace function plone27_empresa_titular_cese(p_bank uuid,p_empresa uuid,p_persona uuid,p_motivo text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare activos int; n int; era_titular boolean; begin
+  if not exists(select 1 from plone27_empresas e where e.id=p_empresa and e.bank_id=p_bank) then raise exception 'Empresa no encontrada'; end if;
+  select count(*) into activos from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.rol='titular' and t.hasta is null;
+  era_titular:=exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_persona and t.rol='titular' and t.hasta is null);
+  if era_titular and activos<=1 then raise exception 'La empresa necesita al menos un titular'; end if;
+  with x as(update plone27_empresa_titulares set hasta=current_date
+            where empresa_id=p_empresa and persona=p_persona and hasta is null returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'La persona no es titular activo de la empresa'; end if;
+  delete from plone27_account_members m using plone27_empresa_cuentas ec
+    where ec.empresa_id=p_empresa and m.account_id=ec.account_id and m.user_id=p_persona;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_titular_cese','empresa',p_empresa::text,jsonb_build_object('motivo',p_motivo));
+end $$;
+
+-- Pasarela de la empresa: crea su cliente de API con permisos de una lista cerrada
+create or replace function plone27_empresa_pasarela_registrar(p_bank uuid,p_empresa uuid,p_nombre text,p_key_hash text,p_scopes text[],p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare cid uuid; begin
+  if not exists(select 1 from plone27_empresas e where e.id=p_empresa and e.bank_id=p_bank and e.estado='activa') then
+    raise exception 'Empresa no encontrada o no activa';
+  end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede dar de alta su pasarela';
+  end if;
+  if exists(select 1 from plone27_empresa_pasarelas pe where pe.empresa_id=p_empresa and pe.activa) then
+    raise exception 'La empresa ya tiene una pasarela activa';
+  end if;
+  if p_scopes is null or array_length(p_scopes,1) is null or not(p_scopes <@ array['checkout:crear','branding:gestionar','webhooks:gestionar','origenes:gestionar','accounts:read']::text[]) then
+    raise exception 'Permisos no permitidos para una pasarela de empresa';
+  end if;
+  insert into plone27_api_clients(bank_id,name,key_hash,scopes) values(p_bank,p_nombre,p_key_hash,p_scopes)
+    returning plone27_api_clients.id into cid;
+  insert into plone27_empresa_pasarelas(empresa_id,client_id) values(p_empresa,cid);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_pasarela_alta','empresa',p_empresa::text,jsonb_build_object('client',cid,'scopes',p_scopes));
+  return cid; end $$;
+
+create or replace function plone27_empresa_contrato_guardar(p_bank uuid,p_empresa uuid,p_texto text) returns int
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare v int; begin
+  if not exists(select 1 from plone27_empresas e where e.id=p_empresa and e.bank_id=p_bank) then raise exception 'Empresa no encontrada'; end if;
+  select coalesce(max(c.version),0)+1 into v from plone27_empresa_contratos c where c.empresa_id=p_empresa;
+  insert into plone27_empresa_contratos(empresa_id,version,texto) values(p_empresa,v,p_texto);
+  return v; end $$;
+
+create or replace function plone27_empresa_contrato_actual(p_bank uuid,p_empresa uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select jsonb_build_object('version',c.version,'texto',c.texto,'creado',c.creado)
+  from plone27_empresa_contratos c join plone27_empresas e on e.id=c.empresa_id
+  where c.empresa_id=p_empresa and e.bank_id=p_bank order by c.version desc limit 1 $$;
+
+create or replace function plone27_empresa_detalle(p_bank uuid,p_empresa uuid) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+declare r jsonb; begin
+  select jsonb_build_object('id',e.id,'nombre',e.nombre,'identificador_fiscal',e.identificador_fiscal,'estado',e.estado,
+    'titulares',(select coalesce(jsonb_agg(jsonb_build_object('dip',p.dip,'rol',t.rol,'desde',t.desde,'hasta',t.hasta) order by t.desde),'[]'::jsonb)
+                 from plone27_empresa_titulares t join plone27_personas p on p.id=t.persona where t.empresa_id=e.id),
+    'cuentas',(select coalesce(jsonb_agg(jsonb_build_object('iban',a.iban,'nombre',a.name) order by a.iban),'[]'::jsonb)
+               from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id where ec.empresa_id=e.id),
+    'pasarela',(select jsonb_build_object('client_id',pe.client_id,'activa',pe.activa) from plone27_empresa_pasarelas pe where pe.empresa_id=e.id),
+    'contrato_version',(select max(c.version) from plone27_empresa_contratos c where c.empresa_id=e.id))
+  into r from plone27_empresas e where e.id=p_empresa and e.bank_id=p_bank;
+  return r; end $$;
+
+-- NFC: identificador y/o enlace de la tarjeta (física o virtual)
+create or replace function plone27_tarjeta_nfc_set(p_bank uuid,p_ref text,p_nfc text,p_enlace text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_cards cd set nfc_id=nullif(p_nfc,''), nfc_enlace=nullif(p_enlace,''), nfc_actualizado=now()
+            from plone27_accounts a
+            where cd.card_ref=p_ref and a.id=cd.account_id and a.bank_id=p_bank returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Tarjeta no encontrada'; end if;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'tarjeta_nfc','card',p_ref,jsonb_build_object('nfc',nullif(p_nfc,''),'enlace',nullif(p_enlace,'')));
+end $$;
+
+create or replace function plone27_tarjeta_nfc_get(p_bank uuid,p_ref text) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select jsonb_build_object('nfc_id',cd.nfc_id,'nfc_enlace',cd.nfc_enlace,'actualizado',cd.nfc_actualizado)
+  from plone27_cards cd join plone27_accounts a on a.id=cd.account_id
+  where cd.card_ref=p_ref and a.bank_id=p_bank $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0037_plone27_tasas_interbancarias.sql) ====================
+-- Placeta One · 0037 · Tasas configurables para pasarelas (por banco, por pasarela y por medio de pago),
+-- aplicación automática al cobrar, operaciones interbancarias y posición neta frente a cada banco.
+-- Requiere 0036. Idempotente.
+
+-- ---------- Catálogo de tasas ----------
+create table if not exists plone27_tasas(
+  id uuid primary key default gen_random_uuid(),
+  ambito text not null check(ambito in('propietario','banco')),
+  bank_id uuid not null references plone27_banks,
+  client_id uuid references plone27_api_clients,
+  operacion text not null default 'pasarela_pago' check(operacion in('pasarela_pago')),
+  medio text check(medio is null or medio in('cuenta','tarjeta')),
+  tipo text not null check(tipo in('fijo','porcentaje')),
+  valor numeric(18,4) not null check(valor>=0),
+  minimo numeric(18,2) not null default 0 check(minimo>=0),
+  maximo numeric(18,2) check(maximo is null or maximo>=minimo),
+  pagador text not null check(pagador in('comercio','banco')),
+  beneficiario text not null check(beneficiario in('propietario','banco')),
+  activa boolean not null default true,
+  creada timestamptz not null default now(),
+  check(ambito='propietario' or (beneficiario='banco' and pagador='comercio')));
+
+-- Registro de cada tasa cobrada (idempotente por pago y tasa)
+create table if not exists plone27_tasas_cobradas(
+  checkout uuid not null references plone27_checkouts(id),
+  tasa uuid not null references plone27_tasas(id),
+  importe numeric(18,2) not null check(importe>0),
+  pagador text not null,
+  beneficiario text not null,
+  tx uuid,
+  creada timestamptz not null default now(),
+  primary key(checkout,tasa));
+
+-- Tasas que aplican a un pago de la pasarela (importe calculado y acotado por mínimo y máximo)
+create or replace function plone27_tasas_aplicables(p_bank uuid,p_client uuid,p_medio text,p_importe numeric)
+returns table(tasa uuid,pagador text,beneficiario text,importe numeric)
+language sql stable security definer set search_path=public as $$
+  select t.id, t.pagador, t.beneficiario,
+    round(least(greatest(case when t.tipo='fijo' then t.valor else p_importe*t.valor/100 end, t.minimo),
+      coalesce(t.maximo,999999999999)),2)
+  from plone27_tasas t
+  where t.activa and t.bank_id=p_bank and t.operacion='pasarela_pago'
+    and (t.medio is null or t.medio=p_medio)
+    and (t.client_id is null or t.client_id=p_client) $$;
+
+-- Cobro automático de las tasas cuando un pago de la pasarela queda pagado
+create or replace function plone27_trg_tasas_pasarela() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare t record; orig uuid; ben uuid; tx uuid; begin
+  for t in select x.tasa, x.pagador, x.beneficiario, x.importe from plone27_tasas_aplicables(new.bank_id,new.client_id,new.medio,new.importe) x loop
+    if t.importe<=0 then continue; end if;
+    orig:=case when t.pagador='comercio' then new.cuenta_destino else plone27_comision_cuenta(new.bank_id) end;
+    ben:=case when t.beneficiario='propietario' then plone27_reserve_account() else plone27_comision_cuenta(new.bank_id) end;
+    if orig=ben then continue; end if;
+    tx:=plone27_transfer('tasa:'||new.id::text||':'||t.tasa::text,orig,ben,t.importe,'Tasa de pasarela',null);
+    insert into plone27_tasas_cobradas(checkout,tasa,importe,pagador,beneficiario,tx)
+      values(new.id,t.tasa,t.importe,t.pagador,t.beneficiario,tx) on conflict(checkout,tasa) do nothing;
+  end loop;
+  return new; end $$;
+drop trigger if exists trg_tasas_pasarela on plone27_checkouts;
+drop trigger if exists trg_tasas_pasarela on plone27_checkouts;
+create trigger trg_tasas_pasarela after update of estado on plone27_checkouts
+  for each row when (new.estado='pagado' and old.estado is distinct from 'pagado')
+  execute function plone27_trg_tasas_pasarela();
+
+-- ---------- Alta y baja de tasas ----------
+-- La administración (ámbito propietario) puede fijar cualquier tasa; el banco solo las suyas, que cobra él a sus comercios.
+create or replace function plone27_tasa_alta(p_bank uuid,p_ambito text,p_client uuid,p_medio text,p_tipo text,p_valor numeric,
+    p_minimo numeric,p_maximo numeric,p_pagador text,p_beneficiario text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare tid uuid; begin
+  if not exists(select 1 from plone27_banks b where b.id=p_bank and b.active) then raise exception 'Entidad no encontrada'; end if;
+  if p_client is not null and not exists(select 1 from plone27_api_clients c where c.id=p_client and c.bank_id=p_bank) then
+    raise exception 'El cliente no pertenece a la entidad';
+  end if;
+  if p_ambito='banco' and (p_pagador<>'comercio' or p_beneficiario<>'banco') then
+    raise exception 'La entidad solo puede cobrar tasas a sus comercios para su propio beneficio';
+  end if;
+  insert into plone27_tasas(ambito,bank_id,client_id,medio,tipo,valor,minimo,maximo,pagador,beneficiario)
+    values(p_ambito,p_bank,p_client,p_medio,p_tipo,p_valor,coalesce(p_minimo,0),p_maximo,p_pagador,p_beneficiario)
+    returning plone27_tasas.id into tid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'tasa_alta','bank',p_bank::text,jsonb_build_object('tasa',tid,'ambito',p_ambito,'valor',p_valor,'tipo',p_tipo));
+  return tid; end $$;
+
+create or replace function plone27_tasa_desactivar(p_bank uuid,p_id uuid,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_tasas set activa=false where id=p_id and bank_id=p_bank returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Tasa no encontrada'; end if;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'tasa_desactivar','bank',p_bank::text,jsonb_build_object('tasa',p_id));
+end $$;
+
+create or replace function plone27_tasas_listar(p_bank uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.creada desc),'[]'::jsonb) from (
+    select t.id, t.ambito, t.client_id, t.medio, t.tipo, t.valor, t.minimo, t.maximo, t.pagador, t.beneficiario, t.activa, t.creada
+    from plone27_tasas t where t.bank_id=p_bank) x $$;
+
+-- ---------- Operaciones interbancarias de la entidad ----------
+create or replace function plone27_interbancarias(p_bank uuid,p_desde date,p_hasta date) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.creada desc),'[]'::jsonb) from (
+    select c.id, c.client_ref as referencia, c.estado, c.importe, c.comision, c.comision_pagador, c.creada,
+      case when c.banco_pagador=p_bank then 'pagada' else 'cobrada' end as sentido,
+      (select b.code from plone27_accounts a join plone27_banks b on b.id=a.bank_id where a.id=c.cuenta_destino) as banco_destino
+    from plone27_checkouts c
+    where c.interbancaria and (c.banco_pagador=p_bank or c.bank_id=p_bank)
+      and c.creada::date between p_desde and p_hasta) x $$;
+
+-- Posición neta de la entidad frente a cada banco con operaciones pagadas en el periodo
+create or replace function plone27_posicion_interbancaria(p_bank uuid,p_desde date,p_hasta date) returns jsonb
+language sql stable security definer set search_path=public as $$
+  with ops as(
+    select c.banco_pagador as origen, a.bank_id as destino, c.importe
+    from plone27_checkouts c join plone27_accounts a on a.id=c.cuenta_destino
+    where c.estado='pagado' and c.interbancaria and c.resuelta::date between p_desde and p_hasta),
+  contra as(
+    select distinct case when o.origen=p_bank then o.destino else o.origen end as banco
+    from ops o where p_bank in(o.origen,o.destino) and o.origen<>o.destino)
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.banco_codigo),'[]'::jsonb) from (
+    select b.code as banco_codigo, b.name as banco,
+      coalesce((select sum(o.importe) from ops o where o.origen=p_bank and o.destino=ct.banco),0) as enviado,
+      coalesce((select sum(o.importe) from ops o where o.origen=ct.banco and o.destino=p_bank),0) as recibido,
+      coalesce((select sum(o.importe) from ops o where o.origen=ct.banco and o.destino=p_bank),0)
+        -coalesce((select sum(o.importe) from ops o where o.origen=p_bank and o.destino=ct.banco),0) as neto
+    from contra ct join plone27_banks b on b.id=ct.banco) x $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0038_plone27_admin_cifrado_rotacion.sql) ====================
+-- Placeta One · 0038 · Cifrado de secretos de webhook, rotación de la clave de la pasarela de una empresa
+-- y suspensión de empresas. Requiere 0037. Idempotente.
+
+-- Marca de los secretos cifrados (los antiguos, en claro, se cifran al rotarlos)
+alter table plone27_webhooks add column if not exists cifrado boolean generated always as (secret like 'enc:v1:%') stored;
+
+-- Rotación de la clave de la pasarela de una empresa (solo un titular activo)
+create or replace function plone27_empresa_pasarela_rotar(p_bank uuid,p_empresa uuid,p_key_hash text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare cid uuid; begin
+  if not exists(select 1 from plone27_empresas e where e.id=p_empresa and e.bank_id=p_bank and e.estado='activa') then
+    raise exception 'Empresa no encontrada o no activa';
+  end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede rotar su clave';
+  end if;
+  select pe.client_id into cid from plone27_empresa_pasarelas pe where pe.empresa_id=p_empresa and pe.activa;
+  if cid is null then raise exception 'La empresa no tiene pasarela activa'; end if;
+  update plone27_api_clients set key_hash=p_key_hash where id=cid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_clave_rotada','empresa',p_empresa::text,jsonb_build_object('client',cid));
+  return cid; end $$;
+
+-- Estado de la empresa. Suspender o dar de baja desactiva su pasarela; volver a activar la restaura.
+create or replace function plone27_empresa_estado(p_bank uuid,p_empresa uuid,p_estado text,p_motivo text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  if p_estado not in('activa','suspendida','baja') then raise exception 'Estado no válido'; end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null)
+     and p_actor is not null then
+    raise exception 'Solo un titular de la empresa puede cambiar su estado';
+  end if;
+  with x as(update plone27_empresas set estado=p_estado where id=p_empresa and bank_id=p_bank returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Empresa no encontrada'; end if;
+  update plone27_empresa_pasarelas pe set activa=(p_estado='activa') where pe.empresa_id=p_empresa;
+  update plone27_api_clients c set active=(p_estado='activa')
+    where c.id in(select pe.client_id from plone27_empresa_pasarelas pe where pe.empresa_id=p_empresa);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_estado','empresa',p_empresa::text,jsonb_build_object('estado',p_estado,'motivo',p_motivo));
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0039_plone27_webhooks_rotacion_forzada.sql) ====================
+-- Placeta One · 0039 · Rotación forzada de secretos de webhook sin cifrar.
+-- Desactiva los webhooks con secreto en claro; al rotarlos, el banco vuelve a quedar activo con secreto cifrado.
+-- Requiere 0038. Idempotente.
+
+create or replace function plone27_bk_webhook_rotar(p_bank uuid,p_id uuid,p_secret text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_webhooks set secret=p_secret, active=true where id=p_id and bank_id=p_bank returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Webhook no encontrado'; end if;
+end $$;
+
+create or replace function plone27_webhooks_desactivar_sin_cifrar(p_actor uuid) returns int
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_webhooks set active=false where active and secret not like 'enc:v1:%' returning 1)
+  select count(*) into n from x;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'webhooks_desactivados_sin_cifrar','webhook',null,jsonb_build_object('n',n));
+  return n; end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0040_plone27_liquidacion_tasas_reversion.sql) ====================
+-- Placeta One · 0040 · Liquidación interbancaria neta diaria, límite de exposición, reversión con doble aprobación
+-- y motor de tasas para transferencias interbancarias y cargos de tarjeta de empresa.
+-- Todo empieza DESACTIVADO (plone27_config_interbancaria). Requiere 0039. Idempotente.
+
+-- ---------- Interruptores ----------
+create table if not exists plone27_config_interbancaria(
+  id int primary key default 1 check(id=1),
+  liquidacion_activa boolean not null default false,
+  tasas_operaciones_activas boolean not null default false,
+  actualizada timestamptz not null default now());
+insert into plone27_config_interbancaria(id) values(1) on conflict(id) do nothing;
+
+-- ---------- Liquidaciones, operaciones pendientes de liquidar y límites ----------
+create table if not exists plone27_liquidaciones(
+  id uuid primary key default gen_random_uuid(),
+  fecha date not null,
+  banco_deudor uuid not null references plone27_banks,
+  banco_acreedor uuid not null references plone27_banks,
+  importe numeric(18,2) not null check(importe>0),
+  estado text not null check(estado in('pendiente','ejecutada','revertida','compensatoria')),
+  motivo text check(motivo is null or length(motivo)>=10),
+  revierte uuid references plone27_liquidaciones(id),
+  tx uuid,
+  aprobada_por uuid,
+  aprobada_por2 uuid,
+  creada timestamptz not null default now(),
+  check(banco_deudor<>banco_acreedor));
+
+create table if not exists plone27_operaciones_interbancarias(
+  id bigint generated always as identity primary key,
+  origen uuid not null references plone27_banks,
+  destino uuid not null references plone27_banks,
+  importe numeric(18,2) not null check(importe>0),
+  ref text not null unique,
+  fecha date not null default current_date,
+  liquidada_en uuid references plone27_liquidaciones(id),
+  check(origen<>destino));
+
+create table if not exists plone27_limites_exposicion(
+  bank_deudor uuid not null references plone27_banks,
+  bank_acreedor uuid not null references plone27_banks,
+  limite numeric(18,2) not null check(limite>=0),
+  primary key(bank_deudor,bank_acreedor),
+  check(bank_deudor<>bank_acreedor));
+
+create table if not exists plone27_reversiones(
+  id uuid primary key default gen_random_uuid(),
+  liquidacion uuid not null references plone27_liquidaciones(id),
+  motivo text not null check(length(motivo)>=10),
+  solicitada_por uuid not null,
+  aprobada_por uuid,
+  estado text not null default 'pendiente' check(estado in('pendiente','ejecutada','rechazada')),
+  creada timestamptz not null default now(),
+  resuelta timestamptz);
+create unique index if not exists plone27_reversion_pendiente_ux on plone27_reversiones(liquidacion) where estado='pendiente';
+
+-- ---------- Tasas: nuevas operaciones (la tasa la paga siempre el banco emisor) ----------
+alter table plone27_tasas drop constraint if exists plone27_tasas_operacion_check;
+do $$ begin alter table plone27_tasas add constraint plone27_tasas_operacion_check
+  check(operacion in('pasarela_pago','transferencia_interbancaria','cargo_tarjeta_empresa')) not valid; exception when duplicate_object then null; end $$;
+
+create or replace function plone27_tasas_operacion(p_bank uuid,p_operacion text,p_medio text,p_importe numeric)
+returns table(tasa uuid,beneficiario text,monto numeric)
+language sql stable security definer set search_path=public as $$
+  select t.id, t.beneficiario,
+    round(least(greatest(case when t.tipo='fijo' then t.valor else p_importe*t.valor/100 end, t.minimo),
+      coalesce(t.maximo,999999999999)),2)
+  from plone27_tasas t
+  where t.activa and t.bank_id=p_bank and t.operacion=p_operacion and t.client_id is null
+    and (t.medio is null or t.medio=p_medio) $$;
+
+create or replace function plone27_tasa_alta_operacion(p_bank uuid,p_operacion text,p_tipo text,p_valor numeric,p_minimo numeric,p_maximo numeric,
+    p_beneficiario text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare tid uuid; begin
+  if p_operacion not in('transferencia_interbancaria','cargo_tarjeta_empresa') then raise exception 'Operación no válida'; end if;
+  if not exists(select 1 from plone27_banks b where b.id=p_bank) then raise exception 'Entidad no encontrada'; end if;
+  insert into plone27_tasas(ambito,bank_id,operacion,tipo,valor,minimo,maximo,pagador,beneficiario)
+    values('propietario',p_bank,p_operacion,p_tipo,p_valor,coalesce(p_minimo,0),p_maximo,'banco',p_beneficiario)
+    returning plone27_tasas.id into tid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'tasa_operacion_alta','bank',p_bank::text,jsonb_build_object('operacion',p_operacion,'valor',p_valor,'tipo',p_tipo));
+  return tid; end $$;
+
+-- Cobra las tasas de una operación interbancaria. Misma entidad: exenta. Cargos de tarjeta: solo cuentas de empresa.
+-- Con el interruptor apagado no hace nada y devuelve 0.
+create or replace function plone27_cobrar_tasa(p_operacion text,p_cuenta_origen uuid,p_cuenta_destino uuid,p_importe numeric,p_key text,p_actor uuid)
+returns numeric
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ob uuid; db uuid; okind text; t record; total numeric:=0; orig uuid; ben uuid; begin
+  if not coalesce((select c.tasas_operaciones_activas from plone27_config_interbancaria c where c.id=1),false) then return 0; end if;
+  select a.bank_id, a.kind into ob, okind from plone27_accounts a where a.id=p_cuenta_origen;
+  select a.bank_id into db from plone27_accounts a where a.id=p_cuenta_destino;
+  if ob is null or db is null or ob=db then return 0; end if;
+  if p_operacion='cargo_tarjeta_empresa' and okind<>'business' then return 0; end if;
+  for t in select x.tasa, x.beneficiario, x.monto from plone27_tasas_operacion(ob,p_operacion,null,p_importe) x loop
+    if t.monto<=0 then continue; end if;
+    orig:=plone27_comision_cuenta(ob);
+    ben:=case when t.beneficiario='propietario' then plone27_reserve_account() else plone27_comision_cuenta(ob) end;
+    if orig=ben then continue; end if;
+    perform plone27_transfer('tasa-op:'||p_key||':'||t.tasa::text,orig,ben,t.monto,'Tasa interbancaria',p_actor);
+    total:=total+t.monto;
+  end loop;
+  return total; end $$;
+
+-- ---------- Registro de operaciones interbancarias pagadas ----------
+create or replace function plone27_registrar_op(p_origen uuid,p_destino uuid,p_importe numeric,p_ref text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if p_origen is null or p_destino is null or p_origen=p_destino then return; end if;
+  insert into plone27_operaciones_interbancarias(origen,destino,importe,ref) values(p_origen,p_destino,p_importe,p_ref)
+    on conflict(ref) do nothing;
+end $$;
+
+create or replace function plone27_trg_ops_checkout() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare dest uuid; begin
+  if not new.interbancaria then return new; end if;
+  select a.bank_id into dest from plone27_accounts a where a.id=new.cuenta_destino;
+  perform plone27_registrar_op(new.banco_pagador,dest,new.importe,'checkout:'||new.id::text);
+  return new; end $$;
+drop trigger if exists trg_ops_checkout on plone27_checkouts;
+drop trigger if exists trg_ops_checkout on plone27_checkouts;
+create trigger trg_ops_checkout after update of estado on plone27_checkouts
+  for each row when (new.estado='pagado' and old.estado is distinct from 'pagado')
+  execute function plone27_trg_ops_checkout();
+
+-- ---------- Límite de exposición: se comprueba antes de crear un pago interbancario ----------
+create or replace function plone27_trg_limite_exposicion() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare dest uuid; lim numeric; neto numeric; begin
+  if not new.interbancaria then return new; end if;
+  select a.bank_id into dest from plone27_accounts a where a.id=new.cuenta_destino;
+  select l.limite into lim from plone27_limites_exposicion l where l.bank_deudor=new.banco_pagador and l.bank_acreedor=dest;
+  if lim is null then return new; end if;
+  select coalesce(sum(case when o.origen=new.banco_pagador then o.importe else -o.importe end),0) into neto
+    from plone27_operaciones_interbancarias o
+    where o.liquidada_en is null and ((o.origen=new.banco_pagador and o.destino=dest) or (o.origen=dest and o.destino=new.banco_pagador));
+  neto:=neto+coalesce((select sum(c.importe) from plone27_checkouts c join plone27_accounts a on a.id=c.cuenta_destino
+    where c.estado='pendiente' and c.interbancaria and c.banco_pagador=new.banco_pagador and a.bank_id=dest and c.expira_at>now()),0);
+  if neto+new.importe>lim then
+    raise exception 'Tu entidad ha alcanzado su límite de exposición con ese banco: hay que liquidar antes de nuevos pagos interbancarios';
+  end if;
+  return new; end $$;
+drop trigger if exists trg_limite_exposicion on plone27_checkouts;
+drop trigger if exists trg_limite_exposicion on plone27_checkouts;
+create trigger trg_limite_exposicion before insert on plone27_checkouts
+  for each row execute function plone27_trg_limite_exposicion();
+
+-- ---------- Cuenta de liquidación de cada banco (la financia el propio banco) ----------
+create or replace function plone27_cuenta_liquidacion(p_bank uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare cid uuid; begin
+  select a.id into cid from plone27_accounts a where a.bank_id=p_bank and a.kind='system' and a.name='Liquidación interbancaria' limit 1;
+  if cid is null then cid:=(plone27_open_account(p_bank,'system','Liquidación interbancaria',null,null)->>'id')::uuid; end if;
+  return cid; end $$;
+
+create or replace function plone27_limite_set(p_deudor uuid,p_acreedor uuid,p_limite numeric,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if p_deudor=p_acreedor then raise exception 'Un banco no tiene límite frente a sí mismo'; end if;
+  insert into plone27_limites_exposicion(bank_deudor,bank_acreedor,limite) values(p_deudor,p_acreedor,p_limite)
+    on conflict(bank_deudor,bank_acreedor) do update set limite=excluded.limite;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'limite_exposicion','bank',p_deudor::text,jsonb_build_object('acreedor',p_acreedor,'limite',p_limite));
+end $$;
+
+-- ---------- Liquidación neta: todo o nada ----------
+create or replace function plone27_liquidar(p_fecha date,p_actor uuid) returns jsonb
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare v_liq boolean; r record; v_a uuid; v_b uuid; v_neto numeric; v_deudor uuid; v_acreedor uuid; v_monto numeric;
+  v_ca uuid; v_cb uuid; v_id uuid; v_tx uuid; v_n int:=0; v_code text; begin
+  perform pg_advisory_xact_lock(hashtext('plone27_liquidacion'));
+  select c.liquidacion_activa into v_liq from plone27_config_interbancaria c where c.id=1;
+  if not coalesce(v_liq,false) then raise exception 'La liquidación interbancaria está desactivada'; end if;
+  for r in select distinct least(o.origen,o.destino) as ba, greatest(o.origen,o.destino) as bb
+           from plone27_operaciones_interbancarias o where o.liquidada_en is null and o.fecha<=p_fecha loop
+    v_a:=r.ba; v_b:=r.bb;
+    select coalesce(sum(case when o.origen=v_a then o.importe else -o.importe end),0) into v_neto
+      from plone27_operaciones_interbancarias o
+      where o.liquidada_en is null and o.fecha<=p_fecha and ((o.origen=v_a and o.destino=v_b) or (o.origen=v_b and o.destino=v_a));
+    if v_neto=0 then continue; end if;
+    if v_neto>0 then v_deudor:=v_a; v_acreedor:=v_b; else v_deudor:=v_b; v_acreedor:=v_a; end if;
+    v_monto:=abs(v_neto);
+    v_ca:=plone27_cuenta_liquidacion(v_deudor); v_cb:=plone27_cuenta_liquidacion(v_acreedor);
+    if plone27_available(v_ca)<v_monto then
+      select b.code into v_code from plone27_banks b where b.id=v_deudor;
+      raise exception 'El banco % no tiene saldo en su cuenta de liquidación para pagar % Pz', v_code, v_monto;
+    end if;
+    insert into plone27_liquidaciones(fecha,banco_deudor,banco_acreedor,importe,estado)
+      values(p_fecha,v_deudor,v_acreedor,v_monto,'pendiente') returning plone27_liquidaciones.id into v_id;
+    v_tx:=plone27_transfer('liq:'||v_id::text,v_ca,v_cb,v_monto,'Liquidación interbancaria',p_actor);
+    update plone27_liquidaciones set estado='ejecutada', tx=v_tx where id=v_id;
+    update plone27_operaciones_interbancarias o set liquidada_en=v_id
+      where o.liquidada_en is null and o.fecha<=p_fecha and ((o.origen=v_a and o.destino=v_b) or (o.origen=v_b and o.destino=v_a));
+    v_n:=v_n+1;
+  end loop;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'liquidacion_ejecutada','liquidacion',null,jsonb_build_object('fecha',p_fecha,'n',v_n));
+  return jsonb_build_object('fecha',p_fecha,'liquidaciones',v_n); end $$;
+
+-- ---------- Reversión: compensatoria, con dos personas distintas; reabre las operaciones para volver a liquidarlas ----------
+create or replace function plone27_revertir_liquidacion(p_liq uuid,p_motivo text,p_solicitante uuid,p_aprobador uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare o plone27_liquidaciones; v_id uuid; v_ca uuid; v_cb uuid; v_tx uuid; begin
+  if p_solicitante is null or p_aprobador is null or p_solicitante=p_aprobador then raise exception 'La reversión necesita dos personas distintas'; end if;
+  if coalesce(length(p_motivo),0)<10 then raise exception 'El motivo debe tener al menos 10 caracteres'; end if;
+  select * into o from plone27_liquidaciones where id=p_liq for update;
+  if o.id is null or o.estado<>'ejecutada' then raise exception 'Solo se revierten liquidaciones ejecutadas'; end if;
+  insert into plone27_liquidaciones(fecha,banco_deudor,banco_acreedor,importe,estado,motivo,revierte,aprobada_por,aprobada_por2)
+    values(current_date,o.banco_acreedor,o.banco_deudor,o.importe,'compensatoria',p_motivo,o.id,p_solicitante,p_aprobador)
+    returning plone27_liquidaciones.id into v_id;
+  v_ca:=plone27_cuenta_liquidacion(o.banco_acreedor); v_cb:=plone27_cuenta_liquidacion(o.banco_deudor);
+  if plone27_available(v_ca)<o.importe then raise exception 'La entidad acreedora no tiene saldo para devolver la liquidación'; end if;
+  v_tx:=plone27_transfer('rev:'||v_id::text,v_ca,v_cb,o.importe,'Reversión de liquidación',p_aprobador);
+  update plone27_liquidaciones set estado='ejecutada', tx=v_tx where id=v_id;
+  update plone27_liquidaciones set estado='revertida' where id=o.id;
+  update plone27_operaciones_interbancarias set liquidada_en=null where liquidada_en=o.id;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_aprobador,'liquidacion_revertida','liquidacion',o.id::text,jsonb_build_object('compensatoria',v_id,'motivo',p_motivo));
+  return v_id; end $$;
+
+create or replace function plone27_reversion_solicitar(p_liq uuid,p_motivo text,p_solicitante uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare rid uuid; begin
+  if not exists(select 1 from plone27_liquidaciones l where l.id=p_liq and l.estado='ejecutada') then
+    raise exception 'Solo se puede pedir la reversión de una liquidación ejecutada';
+  end if;
+  insert into plone27_reversiones(liquidacion,motivo,solicitada_por) values(p_liq,p_motivo,p_solicitante)
+    returning plone27_reversiones.id into rid;
+  return rid; end $$;
+
+create or replace function plone27_reversion_aprobar(p_id uuid,p_aprobador uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare rv plone27_reversiones; v uuid; begin
+  select * into rv from plone27_reversiones r where r.id=p_id and r.estado='pendiente' for update;
+  if rv.id is null then raise exception 'Solicitud de reversión no encontrada o ya resuelta'; end if;
+  if rv.solicitada_por=p_aprobador then raise exception 'Quien solicita la reversión no puede aprobarla'; end if;
+  v:=plone27_revertir_liquidacion(rv.liquidacion,rv.motivo,rv.solicitada_por,p_aprobador);
+  update plone27_reversiones set estado='ejecutada', aprobada_por=p_aprobador, resuelta=now() where id=p_id;
+  return v; end $$;
+
+-- ---------- Interruptores ----------
+create or replace function plone27_config_interbancaria_set(p_liquidacion boolean,p_tasas boolean,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  update plone27_config_interbancaria set liquidacion_activa=coalesce(p_liquidacion,false),
+    tasas_operaciones_activas=coalesce(p_tasas,false), actualizada=now() where id=1;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'config_interbancaria','config',null,jsonb_build_object('liquidacion',p_liquidacion,'tasas',p_tasas));
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0041_plone27_conexion_liquidacion_tasas.sql) ====================
+-- Placeta One · 0041 · Conexión de las operaciones interbancarias a la liquidación y a las tasas.
+-- Transferencias de usuario, cargos de tarjeta hechos por el banco y cobro de deudas registran la operación
+-- interbancaria. Las tasas solo se cobran si el interruptor está activo (apagado por defecto).
+-- Requiere 0040. Idempotente. NO ejecutado en PostgreSQL: probar en una base de pruebas.
+
+-- Registra la operación interbancaria y, si el interruptor está activo, cobra la tasa de la operación.
+create or replace function plone27_post_movimiento(p_operacion text,p_key text,p_from uuid,p_to uuid,p_amount numeric,p_tx uuid,p_actor uuid)
+returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ob uuid; db uuid; begin
+  select a.bank_id into ob from plone27_accounts a where a.id=p_from;
+  select a.bank_id into db from plone27_accounts a where a.id=p_to;
+  if ob is null or db is null or ob=db then return; end if;
+  perform plone27_registrar_op(ob,db,p_amount,p_operacion||':'||p_tx::text);
+  perform plone27_cobrar_tasa(p_operacion,p_from,p_to,p_amount,p_tx::text,p_actor);
+end $$;
+
+-- Transferencia de usuario (igual que antes, más el registro y la tasa interbancaria)
+create or replace function plone27_user_transfer(p_key text,p_user uuid,p_from_iban text,p_to_iban text,p_amount numeric,p_memo text,p_bank uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare f uuid; t uuid; tx uuid; begin
+  select id into f from plone27_accounts where iban=p_from_iban;
+  if f is null or not plone27_user_can(p_user,f,true,p_bank) then raise exception 'Cuenta de origen no accesible'; end if;
+  select id into t from plone27_accounts where iban=p_to_iban and status='active';
+  if t is null then raise exception 'Cuenta destino no válida'; end if;
+  if t=f then raise exception 'Origen y destino no pueden coincidir'; end if;
+  tx:=plone27_transfer(p_key,f,t,p_amount,coalesce(p_memo,'Transferencia'),p_user);
+  perform plone27_post_movimiento('transferencia_interbancaria',p_key,f,t,p_amount,tx,p_user);
+  return tx;
+end $$;
+
+-- Cargo de tarjeta liquidado por el banco (igual que antes). Solo aquí se cobra la tasa de cargo de empresa:
+-- la liquidación de los pagos de la pasarela ya tiene sus propias comisiones y no debe cobrar dos veces.
+create or replace function plone27_bk_card_settle(p_bank uuid,p_charge uuid,p_key text) returns jsonb
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare ok boolean; tx uuid; st text; org uuid; dst uuid; imp numeric; begin
+  select exists(select 1 from plone27_card_charges cg join plone27_cards cd on cd.id=cg.card_id
+                join plone27_accounts a on a.id=cd.account_id where cg.id=p_charge and a.bank_id=p_bank) into ok;
+  if not ok then raise exception 'Cargo no encontrado'; end if;
+  select cd.account_id, cg.merchant_account, cg.amount into org, dst, imp
+    from plone27_card_charges cg join plone27_cards cd on cd.id=cg.card_id where cg.id=p_charge;
+  tx:=plone27_card_settle(p_key,p_charge,null);
+  if tx is not null then perform plone27_post_movimiento('cargo_tarjeta_empresa',p_key,org,dst,imp,tx,null); end if;
+  select cg.status into st from plone27_card_charges cg where cg.id=p_charge;
+  return jsonb_build_object('transaccion',tx,'estado',st);
+end $$;
+
+-- Cobro de deuda (igual que antes). Si el acreedor está en otro banco, registra la operación interbancaria. Sin tasa.
+create or replace function plone27_debt_pay(p_key text,p_debt uuid,p_amount numeric,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare d plone27_debts; tx uuid; ob uuid; db uuid; begin
+  select * into d from plone27_debts where id=p_debt for update;
+  if d.disputed then raise exception 'Deuda en disputa: no se cobra'; end if;
+  if d.paid+p_amount>d.principal+d.authorized_charges then raise exception 'Excede la deuda'; end if;
+  tx:=plone27_transfer(p_key,d.account_id,d.creditor_account,p_amount,'Deuda '||d.ref,p_actor);
+  update plone27_debts set paid=paid+p_amount where id=p_debt;
+  select a.bank_id into ob from plone27_accounts a where a.id=d.account_id;
+  select a.bank_id into db from plone27_accounts a where a.id=d.creditor_account;
+  if ob is not null and db is not null and ob<>db then perform plone27_registrar_op(ob,db,p_amount,'deuda:'||tx::text); end if;
+  return tx;
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0042_plone27_disputas_deudas_usuario_logos.sql) ====================
+-- Placeta One · 0042 · Disputas de deudas, deudas en la API del usuario y bucket de logos.
+-- Requiere 0041. Idempotente. NO ejecutado en PostgreSQL: probar en una base de pruebas.
+
+-- ---------- Disputas ----------
+create table if not exists plone27_disputas(
+  id uuid primary key default gen_random_uuid(),
+  debt_id uuid not null references plone27_debts(id),
+  account_id uuid not null references plone27_accounts,
+  monto_reclamado numeric(18,2) not null check(monto_reclamado>0),
+  motivo text not null check(length(motivo)>=10),
+  estado text not null default 'abierta' check(estado in('abierta','devuelta','rechazada')),
+  monto_devuelto numeric(18,2) not null default 0 check(monto_devuelto>=0),
+  abierta_por uuid not null,
+  aprobada_1 uuid,
+  aprobada_2 uuid,
+  resuelta_por uuid,
+  plazo_resolucion date not null,
+  creada timestamptz not null default now(),
+  resuelta timestamptz);
+create unique index if not exists plone27_disputa_abierta_ux on plone27_disputas(debt_id) where estado='abierta';
+
+-- Lo que el titular de la cuenta puede ver de sus deudas (solo cuentas donde tiene acceso)
+create or replace function plone27_user_debts(p_user uuid,p_bank uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.vencimiento, x.id),'[]'::jsonb) from (
+    select d.id, d.ref, a.iban as cuenta, ca.iban as acreedor, d.principal, d.authorized_charges as cargos_autorizados,
+      d.paid as pagado, (d.principal+coalesce(d.authorized_charges,0)-coalesce(d.paid,0)) as pendiente,
+      d.due_date as vencimiento, d.disputed as en_disputa, d.reason as concepto
+    from plone27_debts d
+    join plone27_accounts a on a.id=d.account_id
+    left join plone27_accounts ca on ca.id=d.creditor_account
+    where a.bank_id=p_bank and plone27_user_can(p_user,a.id,false,p_bank)) x $$;
+
+-- Pago de una deuda por el titular (con permiso de escritura en la cuenta deudora)
+create or replace function plone27_user_debt_pay(p_user uuid,p_bank uuid,p_debt uuid,p_amount numeric,p_key text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare d plone27_debts; begin
+  select * into d from plone27_debts where id=p_debt;
+  if d.id is null or not exists(select 1 from plone27_accounts a where a.id=d.account_id and a.bank_id=p_bank) then
+    raise exception 'Deuda no encontrada';
+  end if;
+  if not plone27_user_can(p_user,d.account_id,true,p_bank) then raise exception 'No puedes pagar esta deuda desde esta cuenta'; end if;
+  return plone27_debt_pay(p_key,p_debt,p_amount,p_user);
+end $$;
+
+-- Reclamación: solo sobre lo pagado, dentro de 60 días desde el vencimiento, una abierta por deuda
+create or replace function plone27_user_disputa_abrir(p_user uuid,p_bank uuid,p_debt uuid,p_monto numeric,p_motivo text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare d plone27_debts; did uuid; begin
+  select * into d from plone27_debts where id=p_debt for update;
+  if d.id is null or not exists(select 1 from plone27_accounts a where a.id=d.account_id and a.bank_id=p_bank) then
+    raise exception 'Deuda no encontrada';
+  end if;
+  if not plone27_user_can(p_user,d.account_id,true,p_bank) then raise exception 'No puedes reclamar sobre esta deuda'; end if;
+  if coalesce(length(p_motivo),0)<10 then raise exception 'Explica el motivo con al menos 10 caracteres'; end if;
+  if p_monto is null or p_monto<=0 or p_monto>coalesce(d.paid,0) then
+    raise exception 'Solo puedes reclamar hasta lo pagado (% Pz)', coalesce(d.paid,0);
+  end if;
+  if current_date>coalesce(d.due_date,current_date)+60 then raise exception 'El plazo para reclamar ha vencido (60 días desde el vencimiento)'; end if;
+  if exists(select 1 from plone27_disputas x where x.debt_id=p_debt and x.estado='abierta') then
+    raise exception 'Ya hay una reclamación abierta para esta deuda';
+  end if;
+  insert into plone27_disputas(debt_id,account_id,monto_reclamado,motivo,abierta_por,plazo_resolucion)
+    values(p_debt,d.account_id,p_monto,p_motivo,p_user,current_date+30) returning plone27_disputas.id into did;
+  update plone27_debts set disputed=true where id=p_debt;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_user,'disputa_abierta','deuda',p_debt::text,jsonb_build_object('monto',p_monto));
+  return did; end $$;
+
+create or replace function plone27_user_disputas(p_user uuid,p_bank uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.creada desc),'[]'::jsonb) from (
+    select x.id, x.debt_id, x.estado, x.monto_reclamado, x.monto_devuelto, x.motivo, x.plazo_resolucion, x.creada, x.resuelta
+    from plone27_disputas x join plone27_accounts a on a.id=x.account_id
+    where a.bank_id=p_bank and plone27_user_can(p_user,x.account_id,false,p_bank)) x $$;
+
+-- Resolución por personal (aprobador). Rechazar: la deuda vuelve a cobrarse. Devolver: sale de la cuenta del acreedor.
+-- Devoluciones de más de 1.000 Pz: dos personas distintas.
+create or replace function plone27_disputa_resolver(p_id uuid,p_decision text,p_monto numeric,p_actor uuid) returns jsonb
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare x plone27_disputas; d plone27_debts; m numeric; cb uuid; ob uuid; tx uuid; begin
+  select * into x from plone27_disputas where id=p_id for update;
+  if x.id is null or x.estado<>'abierta' then raise exception 'Reclamación no encontrada o ya resuelta'; end if;
+  select * into d from plone27_debts where id=x.debt_id for update;
+  if p_decision='rechazada' then
+    update plone27_disputas set estado='rechazada', resuelta_por=p_actor, resuelta=now() where id=p_id;
+    update plone27_debts set disputed=false where id=x.debt_id;
+    insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'disputa_rechazada','disputa',p_id::text,'{}'::jsonb);
+    return jsonb_build_object('estado','rechazada');
+  end if;
+  if p_decision<>'devolucion' then raise exception 'Decisión no válida'; end if;
+  m:=coalesce(p_monto,x.monto_reclamado);
+  if m<=0 or m>x.monto_reclamado or m>coalesce(d.paid,0) then raise exception 'Importe de devolución no válido'; end if;
+  if d.creditor_account is null then raise exception 'La deuda no tiene acreedor'; end if;
+  if m>1000 then
+    if x.aprobada_1 is null then
+      update plone27_disputas set aprobada_1=p_actor where id=p_id;
+      return jsonb_build_object('estado','pendiente_segunda_aprobacion');
+    end if;
+    if x.aprobada_1=p_actor then raise exception 'Otra persona debe aprobar la devolución de más de 1.000 Pz'; end if;
+    update plone27_disputas set aprobada_2=p_actor where id=p_id;
+  end if;
+  if plone27_available(d.creditor_account)<m then raise exception 'El acreedor no tiene saldo para la devolución'; end if;
+  tx:=plone27_transfer('disp:'||p_id::text,d.creditor_account,d.account_id,m,'Devolución por reclamación',p_actor);
+  select a.bank_id into cb from plone27_accounts a where a.id=d.creditor_account;
+  select a.bank_id into ob from plone27_accounts a where a.id=d.account_id;
+  if cb is not null and ob is not null and cb<>ob then perform plone27_registrar_op(cb,ob,m,'devolucion:'||tx::text); end if;
+  update plone27_debts set paid=paid-m, disputed=false where id=x.debt_id;
+  update plone27_disputas set estado='devuelta', monto_devuelto=m, resuelta_por=p_actor, resuelta=now() where id=p_id;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'disputa_devuelta','disputa',p_id::text,jsonb_build_object('monto',m));
+  return jsonb_build_object('estado','devuelta','transaccion',tx,'monto',m); end $$;
+
+-- ---------- Bucket de logos (público para lectura; solo el servidor escribe) ----------
+insert into storage.buckets(id,name,public) values('branding','branding',true) on conflict(id) do nothing;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0043_plone27_idempotencia_parametros_disputas.sql) ====================
+-- Placeta One · 0043 · Corrección de idempotencia en el cobro de deudas, parámetros configurables de disputas.
+-- Requiere 0042. Idempotente. NO ejecutado en PostgreSQL: probar con verificacion/pruebas_db.sql antes de producción.
+
+-- ---------- Parámetros configurables (plazos y umbrales) ----------
+create table if not exists plone27_parametros(
+  clave text primary key,
+  valor numeric(18,4) not null,
+  actualizado timestamptz not null default now(),
+  actor uuid);
+insert into plone27_parametros(clave,valor) values
+  ('disputa.plazo_apertura_dias',60),
+  ('disputa.plazo_resolucion_dias',30),
+  ('disputa.umbral_doble_aprobacion',1000)
+on conflict(clave) do nothing;
+
+create or replace function plone27_parametro(p_clave text) returns numeric
+language sql stable security definer set search_path=public as $$
+  select valor from plone27_parametros where clave=p_clave $$;
+
+create or replace function plone27_parametro_set(p_clave text,p_valor numeric,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if p_clave not in('disputa.plazo_apertura_dias','disputa.plazo_resolucion_dias','disputa.umbral_doble_aprobacion') then
+    raise exception 'Parámetro no válido';
+  end if;
+  if p_clave='disputa.plazo_apertura_dias' and (p_valor<1 or p_valor>365) then raise exception 'Plazo de apertura entre 1 y 365 días'; end if;
+  if p_clave='disputa.plazo_resolucion_dias' and (p_valor<1 or p_valor>180) then raise exception 'Plazo de resolución entre 1 y 180 días'; end if;
+  if p_clave='disputa.umbral_doble_aprobacion' and (p_valor<0 or p_valor>1000000) then raise exception 'Umbral entre 0 y 1.000.000 Pz'; end if;
+  insert into plone27_parametros(clave,valor,actor) values(p_clave,p_valor,p_actor)
+    on conflict(clave) do update set valor=excluded.valor, actualizado=now(), actor=excluded.actor;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'parametro_set','parametro',p_clave,jsonb_build_object('valor',p_valor));
+end $$;
+
+-- ---------- Cobro de deuda: IDEMPOTENTE ----------
+-- Una clave repetida con los mismos datos devuelve la transacción original y NO vuelve a sumar el pago a la deuda.
+-- Una clave repetida con datos distintos falla.
+create or replace function plone27_debt_pay(p_key text,p_debt uuid,p_amount numeric,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare d plone27_debts; tx uuid; ob uuid; db uuid; h text; viejo text; begin
+  select * into d from plone27_debts where id=p_debt for update;
+  if d.id is null then raise exception 'Deuda no encontrada'; end if;
+  if d.creditor_account is null then raise exception 'La deuda no tiene acreedor'; end if;
+  -- misma huella que calcula plone27_post para la transferencia equivalente
+  h:=md5('transfer'||jsonb_build_array(
+      jsonb_build_object('account',d.account_id,'dir','debit','amount',p_amount),
+      jsonb_build_object('account',d.creditor_account,'dir','credit','amount',p_amount))::text);
+  select t.id, t.req_hash into tx, viejo from plone27_transactions t where t.idempotency_key=p_key;
+  if tx is not null then
+    if viejo is not null and viejo<>h then raise exception 'Idempotency-Key reutilizada con datos distintos'; end if;
+    return tx;
+  end if;
+  if d.disputed then raise exception 'Deuda en disputa: no se cobra'; end if;
+  if d.paid+p_amount>d.principal+d.authorized_charges then raise exception 'Excede la deuda'; end if;
+  tx:=plone27_transfer(p_key,d.account_id,d.creditor_account,p_amount,'Deuda '||d.ref,p_actor);
+  update plone27_debts set paid=paid+p_amount where id=p_debt;
+  select a.bank_id into ob from plone27_accounts a where a.id=d.account_id;
+  select a.bank_id into db from plone27_accounts a where a.id=d.creditor_account;
+  if ob is not null and db is not null and ob<>db then perform plone27_registrar_op(ob,db,p_amount,'deuda:'||tx::text); end if;
+  return tx;
+end $$;
+
+-- ---------- Reclamación con plazos desde parámetros ----------
+create or replace function plone27_user_disputa_abrir(p_user uuid,p_bank uuid,p_debt uuid,p_monto numeric,p_motivo text) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare d plone27_debts; did uuid; begin
+  select * into d from plone27_debts where id=p_debt for update;
+  if d.id is null or not exists(select 1 from plone27_accounts a where a.id=d.account_id and a.bank_id=p_bank) then
+    raise exception 'Deuda no encontrada';
+  end if;
+  if not plone27_user_can(p_user,d.account_id,true,p_bank) then raise exception 'No puedes reclamar sobre esta deuda'; end if;
+  if coalesce(length(p_motivo),0)<10 then raise exception 'Explica el motivo con al menos 10 caracteres'; end if;
+  if p_monto is null or p_monto<=0 or p_monto>coalesce(d.paid,0) then
+    raise exception 'Solo puedes reclamar hasta lo pagado (% Pz)', coalesce(d.paid,0);
+  end if;
+  if current_date>coalesce(d.due_date,current_date)+plone27_parametro('disputa.plazo_apertura_dias')::int then
+    raise exception 'El plazo para reclamar ha vencido';
+  end if;
+  if exists(select 1 from plone27_disputas x where x.debt_id=p_debt and x.estado='abierta') then
+    raise exception 'Ya hay una reclamación abierta para esta deuda';
+  end if;
+  insert into plone27_disputas(debt_id,account_id,monto_reclamado,motivo,abierta_por,plazo_resolucion)
+    values(p_debt,d.account_id,p_monto,p_motivo,p_user,current_date+plone27_parametro('disputa.plazo_resolucion_dias')::int)
+    returning plone27_disputas.id into did;
+  update plone27_debts set disputed=true where id=p_debt;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_user,'disputa_abierta','deuda',p_debt::text,jsonb_build_object('monto',p_monto));
+  return did; end $$;
+
+-- ---------- Resolución con umbral desde parámetros ----------
+create or replace function plone27_disputa_resolver(p_id uuid,p_decision text,p_monto numeric,p_actor uuid) returns jsonb
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare x plone27_disputas; d plone27_debts; m numeric; cb uuid; ob uuid; tx uuid; begin
+  select * into x from plone27_disputas where id=p_id for update;
+  if x.id is null or x.estado<>'abierta' then raise exception 'Reclamación no encontrada o ya resuelta'; end if;
+  select * into d from plone27_debts where id=x.debt_id for update;
+  if p_decision='rechazada' then
+    update plone27_disputas set estado='rechazada', resuelta_por=p_actor, resuelta=now() where id=p_id;
+    update plone27_debts set disputed=false where id=x.debt_id;
+    insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'disputa_rechazada','disputa',p_id::text,'{}'::jsonb);
+    return jsonb_build_object('estado','rechazada');
+  end if;
+  if p_decision<>'devolucion' then raise exception 'Decisión no válida'; end if;
+  m:=coalesce(p_monto,x.monto_reclamado);
+  if m<=0 or m>x.monto_reclamado or m>coalesce(d.paid,0) then raise exception 'Importe de devolución no válido'; end if;
+  if d.creditor_account is null then raise exception 'La deuda no tiene acreedor'; end if;
+  if m>plone27_parametro('disputa.umbral_doble_aprobacion') then
+    if x.aprobada_1 is null then
+      update plone27_disputas set aprobada_1=p_actor where id=p_id;
+      return jsonb_build_object('estado','pendiente_segunda_aprobacion');
+    end if;
+    if x.aprobada_1=p_actor then raise exception 'Otra persona debe aprobar esta devolución'; end if;
+    update plone27_disputas set aprobada_2=p_actor where id=p_id;
+  end if;
+  if plone27_available(d.creditor_account)<m then raise exception 'El acreedor no tiene saldo para la devolución'; end if;
+  tx:=plone27_transfer('disp:'||p_id::text,d.creditor_account,d.account_id,m,'Devolución por reclamación',p_actor);
+  select a.bank_id into cb from plone27_accounts a where a.id=d.creditor_account;
+  select a.bank_id into ob from plone27_accounts a where a.id=d.account_id;
+  if cb is not null and ob is not null and cb<>ob then perform plone27_registrar_op(cb,ob,m,'devolucion:'||tx::text); end if;
+  update plone27_debts set paid=paid-m, disputed=false where id=x.debt_id;
+  update plone27_disputas set estado='devuelta', monto_devuelto=m, resuelta_por=p_actor, resuelta=now() where id=p_id;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail) values(p_actor,'disputa_devuelta','disputa',p_id::text,jsonb_build_object('monto',m));
+  return jsonb_build_object('estado','devuelta','transaccion',tx,'monto',m); end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0044_plone27_reglas_uso_categorias_subvenciones.sql) ====================
+-- Placeta One · 0044 · Reglas de uso de RBU y de subvenciones (tipos de cuenta, comercios y categorías),
+-- categorías de comercio (Placeta), y API de programas, concesiones, justificaciones y reglas para bancos.
+-- Requiere 0043. Idempotente. NO ejecutado en PostgreSQL: probar antes de producción.
+
+-- ---------- Categorías de comercio (las asigna Placeta) ----------
+create table if not exists plone27_categorias(
+  codigo text primary key check(codigo ~ '^[a-z_]{3,30}$'),
+  nombre text not null check(length(nombre) between 3 and 60),
+  activa boolean not null default true);
+insert into plone27_categorias(codigo,nombre) values
+  ('alimentacion','Alimentación'),('salud','Salud'),('educacion','Educación'),('transporte','Transporte'),
+  ('vivienda','Vivienda'),('ocio','Ocio'),('otros','Otros')
+on conflict(codigo) do nothing;
+
+alter table plone27_accounts add column if not exists categoria text references plone27_categorias(codigo);
+alter table plone27_accounts drop constraint if exists plone27_accounts_categoria_business;
+do $$ begin alter table plone27_accounts add constraint plone27_accounts_categoria_business check(categoria is null or kind='business') not valid; exception when duplicate_object then null; end $$;
+
+-- ---------- Reglas de destino (RBU por bono, o por programa de subvención) ----------
+create table if not exists plone27_politicas_destino(
+  id uuid primary key default gen_random_uuid(),
+  bank_id uuid not null references plone27_banks,
+  ambito text not null check(ambito in('rbu','programa')),
+  programa_id uuid references plone27_grant_programs,
+  tipos_destino text[] not null default '{}',
+  comercios uuid[] not null default '{}',
+  categorias text[] not null default '{}',
+  activa boolean not null default true,
+  creada timestamptz not null default now(),
+  check((ambito='programa' and programa_id is not null) or (ambito='rbu' and programa_id is null)),
+  check(tipos_destino <@ array['personal','business','shared','junior','system']::text[]));
+create unique index if not exists plone27_politica_rbu_ux on plone27_politicas_destino(bank_id) where ambito='rbu' and activa;
+create unique index if not exists plone27_politica_programa_ux on plone27_politicas_destino(programa_id) where ambito='programa' and activa;
+
+-- ¿Puede esta regla pagar a esta cuenta? Cada filtro configurado debe cumplirse. Un filtro vacío no restringe.
+create or replace function plone27_destino_permitido(p_politica uuid,p_destino uuid) returns boolean
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+declare p plone27_politicas_destino; c plone27_accounts; begin
+  select * into p from plone27_politicas_destino where id=p_politica;
+  select * into c from plone27_accounts where id=p_destino;
+  if p.id is null or c.id is null then return false; end if;
+  if cardinality(p.tipos_destino)>0 and not(c.kind=any(p.tipos_destino)) then return false; end if;
+  if cardinality(p.comercios)>0 and not(c.id=any(p.comercios)) then return false; end if;
+  if cardinality(p.categorias)>0 and not(coalesce(c.categoria,'')=any(p.categorias)) then return false; end if;
+  return true; end $$;
+
+-- RBU: cada cargo de tarjeta prepago se comprueba contra la regla RBU del banco de la tarjeta
+create or replace function plone27_trg_rbu_destino() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare c plone27_cards; bk uuid; pol uuid; begin
+  select cd.* into c from plone27_cards cd where cd.id=new.card_id;
+  if c.id is null or c.kind<>'prepago' then return new; end if;
+  select a.bank_id into bk from plone27_accounts a where a.id=c.account_id;
+  select p.id into pol from plone27_politicas_destino p where p.bank_id=bk and p.ambito='rbu' and p.activa;
+  if pol is null then return new; end if;
+  if not plone27_destino_permitido(pol,new.merchant_account) then
+    raise exception 'Esta tarjeta RBU no puede pagar en ese comercio';
+  end if;
+  return new; end $$;
+drop trigger if exists trg_rbu_destino on plone27_card_charges;
+drop trigger if exists trg_rbu_destino on plone27_card_charges;
+create trigger trg_rbu_destino before insert on plone27_card_charges
+  for each row execute function plone27_trg_rbu_destino();
+
+-- Subvención: la justificación debe ser un gasto de la cuenta beneficiaria cuyo destino cumple la regla del programa
+create or replace function plone27_trg_justificacion_destino() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare g plone27_grants; pol uuid; dest uuid; begin
+  select * into g from plone27_grants where id=new.grant_id;
+  select p.id into pol from plone27_politicas_destino p where p.programa_id=g.program_id and p.activa;
+  if pol is null then return new; end if;
+  if not exists(select 1 from plone27_ledger_entries l where l.transaction_id=new.transaction_id
+                and l.account_id=g.beneficiary_account and l.direction='debit') then
+    raise exception 'La transacción no es un gasto de la cuenta beneficiaria';
+  end if;
+  select l.account_id into dest from plone27_ledger_entries l
+    where l.transaction_id=new.transaction_id and l.direction='credit' and l.account_id<>g.beneficiary_account limit 1;
+  if dest is null then raise exception 'La transacción no tiene un destino que justificar'; end if;
+  if not plone27_destino_permitido(pol,dest) then
+    raise exception 'El destino de ese gasto no está permitido por la convocatoria';
+  end if;
+  return new; end $$;
+drop trigger if exists trg_justificacion_destino on plone27_justifications;
+drop trigger if exists trg_justificacion_destino on plone27_justifications;
+create trigger trg_justificacion_destino before insert on plone27_justifications
+  for each row execute function plone27_trg_justificacion_destino();
+
+-- ---------- Administración de Placeta: categorías y categoría de cada comercio ----------
+create or replace function plone27_categoria_set(p_codigo text,p_nombre text,p_activa boolean,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if p_codigo is null or p_codigo !~ '^[a-z_]{3,30}$' then raise exception 'Código de categoría no válido'; end if;
+  insert into plone27_categorias(codigo,nombre,activa) values(p_codigo,p_nombre,coalesce(p_activa,true))
+    on conflict(codigo) do update set nombre=excluded.nombre, activa=excluded.activa;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'categoria_set','categoria',p_codigo,jsonb_build_object('activa',p_activa));
+end $$;
+
+create or replace function plone27_cuenta_categoria_set(p_iban text,p_categoria text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  if p_categoria is not null and not exists(select 1 from plone27_categorias c where c.codigo=p_categoria and c.activa) then
+    raise exception 'Categoría no válida';
+  end if;
+  with x as(update plone27_accounts set categoria=p_categoria where iban=p_iban and kind='business' returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Solo se pueden categorizar cuentas de comercio (empresa)'; end if;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'comercio_categoria','cuenta',p_iban,jsonb_build_object('categoria',p_categoria));
+end $$;
+
+-- ---------- API de banco: catálogos ----------
+create or replace function plone27_bk_categorias() returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.codigo),'[]'::jsonb) from (
+    select c.codigo, c.nombre from plone27_categorias c where c.activa) x $$;
+
+-- Directorio de comercios: cuentas de empresa activas, sin saldos
+create or replace function plone27_bk_comercios() returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.nombre),'[]'::jsonb) from (
+    select a.iban, a.name as nombre, a.categoria, b.code as banco
+    from plone27_accounts a join plone27_banks b on b.id=a.bank_id
+    where a.kind='business' and a.status='active') x $$;
+
+-- ---------- API de banco: programas, concesiones y justificaciones ----------
+create or replace function plone27_bk_programas(p_bank uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.nombre),'[]'::jsonb) from (
+    select gp.id, gp.name as nombre, gp.kind as tipo, gp.budget as presupuesto, a.iban as cuenta_fondos,
+      (select count(*) from plone27_grants g where g.program_id=gp.id) as concesiones
+    from plone27_grant_programs gp join plone27_accounts a on a.id=gp.funding_account
+    where a.bank_id=p_bank) x $$;
+
+create or replace function plone27_bk_programa_crear(p_bank uuid,p_name text,p_kind text,p_budget numeric,p_funding_iban text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare f uuid; pid uuid; begin
+  if p_kind not in('subvencion','bono') then raise exception 'Tipo no válido (subvencion o bono)'; end if;
+  if coalesce(length(p_name),0)<3 then raise exception 'Nombre demasiado corto'; end if;
+  if p_budget is null or p_budget<=0 then raise exception 'Presupuesto no válido'; end if;
+  select a.id into f from plone27_accounts a where a.iban=p_funding_iban and a.bank_id=p_bank;
+  if f is null then raise exception 'La cuenta de fondos debe ser de tu entidad'; end if;
+  insert into plone27_grant_programs(name,kind,budget,funding_account) values(p_name,p_kind,p_budget,f)
+    returning plone27_grant_programs.id into pid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'programa_crear','programa',pid::text,jsonb_build_object('tipo',p_kind,'presupuesto',p_budget));
+  return pid; end $$;
+
+create or replace function plone27_bk_concesiones(p_bank uuid,p_program uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.programa, x.beneficiario),'[]'::jsonb) from (
+    select g.id, g.program_id, gp.name as programa, b.iban as beneficiario,
+      g.granted as concedido, g.approved as aprobado, g.paid as pagado
+    from plone27_grants g join plone27_grant_programs gp on gp.id=g.program_id
+    join plone27_accounts fa on fa.id=gp.funding_account
+    join plone27_accounts b on b.id=g.beneficiary_account
+    where fa.bank_id=p_bank and (p_program is null or g.program_id=p_program)) x $$;
+
+create or replace function plone27_bk_concesion_crear(p_bank uuid,p_program uuid,p_beneficiary_iban text,p_granted numeric,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare b uuid; gid uuid; begin
+  if not exists(select 1 from plone27_grant_programs gp join plone27_accounts fa on fa.id=gp.funding_account
+                where gp.id=p_program and fa.bank_id=p_bank) then raise exception 'Programa no encontrado en tu entidad'; end if;
+  select a.id into b from plone27_accounts a where a.iban=p_beneficiary_iban and a.bank_id=p_bank and a.status='active';
+  if b is null then raise exception 'El beneficiario debe ser una cuenta activa de tu entidad'; end if;
+  if p_granted is null or p_granted<=0 then raise exception 'Importe concedido no válido'; end if;
+  insert into plone27_grants(program_id,beneficiary_account,granted) values(p_program,b,p_granted)
+    returning plone27_grants.id into gid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'concesion_crear','concesion',gid::text,jsonb_build_object('concedido',p_granted));
+  return gid; end $$;
+
+create or replace function plone27_bk_justificaciones(p_bank uuid,p_grant uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.id),'[]'::jsonb) from (
+    select j.id, j.grant_id, j.transaction_id, j.invoice_ref as factura, j.amount as importe, j.status as estado, j.reimb_ref as reembolso
+    from plone27_justifications j join plone27_grants g on g.id=j.grant_id
+    join plone27_grant_programs gp on gp.id=g.program_id join plone27_accounts fa on fa.id=gp.funding_account
+    where fa.bank_id=p_bank and (p_grant is null or j.grant_id=p_grant)) x $$;
+
+create or replace function plone27_bk_justificar(p_bank uuid,p_grant uuid,p_tx uuid,p_invoice text,p_amount numeric,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if not exists(select 1 from plone27_grants g join plone27_grant_programs gp on gp.id=g.program_id
+                join plone27_accounts fa on fa.id=gp.funding_account where g.id=p_grant and fa.bank_id=p_bank) then
+    raise exception 'Concesión no encontrada en tu entidad';
+  end if;
+  return plone27_justify(p_grant,p_tx,p_invoice,p_amount,p_actor); end $$;
+
+create or replace function plone27_bk_justificacion_pagar(p_bank uuid,p_just uuid,p_key text,p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if not exists(select 1 from plone27_justifications j join plone27_grants g on g.id=j.grant_id
+                join plone27_grant_programs gp on gp.id=g.program_id join plone27_accounts fa on fa.id=gp.funding_account
+                where j.id=p_just and fa.bank_id=p_bank) then
+    raise exception 'Justificación no encontrada en tu entidad';
+  end if;
+  return plone27_reimburse(p_key,p_just,p_actor); end $$;
+
+create or replace function plone27_bk_justificacion_rechazar(p_bank uuid,p_just uuid,p_motivo text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare j plone27_justifications; begin
+  select j.* into j from plone27_justifications j join plone27_grants g on g.id=j.grant_id
+    join plone27_grant_programs gp on gp.id=g.program_id join plone27_accounts fa on fa.id=gp.funding_account
+    where j.id=p_just and fa.bank_id=p_bank for update;
+  if j.id is null then raise exception 'Justificación no encontrada en tu entidad'; end if;
+  if j.status<>'pending' then raise exception 'Solo se rechazan justificaciones pendientes'; end if;
+  update plone27_justifications set status='rejected' where id=p_just;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'justificacion_rechazada','justificacion',p_just::text,jsonb_build_object('motivo',p_motivo));
+end $$;
+
+-- ---------- API de banco: reglas de uso ----------
+create or replace function plone27_bk_politicas(p_bank uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.creada desc),'[]'::jsonb) from (
+    select p.id, p.ambito, p.programa_id, gp.name as programa, p.tipos_destino as tipos, p.comercios, p.categorias, p.activa, p.creada
+    from plone27_politicas_destino p left join plone27_grant_programs gp on gp.id=p.programa_id
+    where p.bank_id=p_bank) x $$;
+
+create or replace function plone27_bk_politica_crear(p_bank uuid,p_ambito text,p_programa uuid,p_tipos text[],p_comercios uuid[],p_categorias text[],p_actor uuid) returns uuid
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare pid uuid; begin
+  if p_ambito not in('rbu','programa') then raise exception 'Ámbito no válido'; end if;
+  if p_ambito='programa' and not exists(select 1 from plone27_grant_programs gp join plone27_accounts fa on fa.id=gp.funding_account
+     where gp.id=p_programa and fa.bank_id=p_bank) then raise exception 'Programa no encontrado en tu entidad'; end if;
+  if p_ambito='rbu' then p_programa:=null; end if;
+  if exists(select 1 from unnest(coalesce(p_categorias,'{}'::text[])) q where not exists(select 1 from plone27_categorias c where c.codigo=q and c.activa)) then
+    raise exception 'Alguna categoría no existe';
+  end if;
+  if exists(select 1 from unnest(coalesce(p_comercios,'{}'::uuid[])) q where not exists(select 1 from plone27_accounts a where a.id=q and a.kind='business')) then
+    raise exception 'Alguno de los comercios no es una cuenta de empresa';
+  end if;
+  if exists(select 1 from unnest(coalesce(p_tipos,'{}'::text[])) q where q not in('personal','business','shared','junior','system')) then
+    raise exception 'Algún tipo de cuenta no existe';
+  end if;
+  -- una sola regla activa por ámbito: la nueva sustituye a la anterior
+  update plone27_politicas_destino set activa=false where bank_id=p_bank and ambito=p_ambito and activa
+    and (programa_id is not distinct from p_programa);
+  insert into plone27_politicas_destino(bank_id,ambito,programa_id,tipos_destino,comercios,categorias)
+    values(p_bank,p_ambito,p_programa,coalesce(p_tipos,'{}'),coalesce(p_comercios,'{}'),coalesce(p_categorias,'{}'))
+    returning plone27_politicas_destino.id into pid;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'politica_destino_crear','politica',pid::text,jsonb_build_object('ambito',p_ambito));
+  return pid; end $$;
+
+create or replace function plone27_bk_politica_desactivar(p_bank uuid,p_id uuid,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare n int; begin
+  with x as(update plone27_politicas_destino set activa=false where id=p_id and bank_id=p_bank returning 1)
+  select count(*) into n from x;
+  if n=0 then raise exception 'Regla no encontrada en tu entidad'; end if;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'politica_destino_desactivar','politica',p_id::text,'{}'::jsonb);
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0045_plone27_ficha_empresa.sql) ====================
+-- Placeta One · 0045 · Ficha de empresa: vínculo con la entidad institucional, organigrama, presupuesto por departamento
+-- y nóminas pagadas. Requiere 0044. Idempotente. NO ejecutado en PostgreSQL: probar antes de producción.
+
+alter table plone27_empresas add column if not exists entidad_cip text references plone27_entidades(cip);
+create unique index if not exists plone27_empresa_entidad_ux on plone27_empresas(entidad_cip) where entidad_cip is not null;
+
+-- Vincula la entidad institucional a la empresa. Solo un titular activo de la empresa puede hacerlo.
+create or replace function plone27_empresa_vincular_entidad(p_bank uuid,p_empresa uuid,p_cip text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; begin
+  select * into e from plone27_empresas where id=p_empresa and bank_id=p_bank;
+  if e.id is null then raise exception 'Empresa no encontrada'; end if;
+  if not exists(select 1 from plone27_entidades x where x.cip=p_cip and x.bank_id=p_bank and x.activa) then
+    raise exception 'Entidad institucional no encontrada o inactiva en tu entidad';
+  end if;
+  if exists(select 1 from plone27_empresas o where o.entidad_cip=p_cip and o.id<>p_empresa) then
+    raise exception 'Esa entidad ya está vinculada a otra empresa';
+  end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede vincular una entidad';
+  end if;
+  update plone27_empresas set entidad_cip=p_cip where id=p_empresa;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_vincular_entidad','empresa',p_empresa::text,jsonb_build_object('cip',p_cip));
+end $$;
+
+-- Ficha completa. Ejercicio = año en curso. Pagado = gastos pagados; comprometido = propuestos o aprobados.
+create or replace function plone27_empresa_ficha(p_bank uuid,p_empresa uuid) returns jsonb
+language plpgsql stable security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; ent plone27_entidades; ej int := extract(year from current_date)::int; r jsonb; begin
+  select * into e from plone27_empresas where id=p_empresa and bank_id=p_bank;
+  if e.id is null then return null; end if;
+  if e.entidad_cip is null then
+    return jsonb_build_object('empresa',jsonb_build_object('id',e.id,'nombre',e.nombre,'identificador_fiscal',e.identificador_fiscal,'estado',e.estado),
+      'entidad',null,'ejercicio',ej);
+  end if;
+  select * into ent from plone27_entidades where cip=e.entidad_cip;
+  select jsonb_build_object(
+    'empresa',jsonb_build_object('id',e.id,'nombre',e.nombre,'identificador_fiscal',e.identificador_fiscal,'estado',e.estado),
+    'entidad',jsonb_build_object('cip',ent.cip,'nombre',ent.nombre,'activa',ent.activa),
+    'ejercicio',ej,
+    'organigrama',(select coalesce(jsonb_agg(jsonb_build_object('id',u.id,'padre',u.padre,'tipo',u.tipo,'nombre',u.nombre,'codigo',u.codigo,'activa',u.activa) order by u.nombre),'[]'::jsonb)
+                   from plone27_unidades u where u.entidad=ent.account_id),
+    'departamentos',(select coalesce(jsonb_agg(to_jsonb(x) order by x.nombre),'[]'::jsonb) from (
+        select u.id, u.nombre, u.tipo,
+          coalesce((select sum(p.anual) from plone27_presupuestos p where p.unidad=u.id and p.ejercicio=ej),0) as presupuesto_anual,
+          coalesce((select sum(g.importe) from plone27_gastos g where g.unidad=u.id and g.ejercicio=ej and g.estado='pagado'),0) as pagado,
+          coalesce((select sum(g.importe) from plone27_gastos g where g.unidad=u.id and g.ejercicio=ej and g.estado in('propuesto','aprobado')),0) as comprometido
+        from plone27_unidades u where u.entidad=ent.account_id) x),
+    'nominas',(select coalesce(jsonb_agg(to_jsonb(x) order by x.periodo desc),'[]'::jsonb) from (
+        select to_char(g.fecha,'YYYY-MM') as periodo, count(*) as pagos, sum(n.importe) as total
+        from plone27_nominas_pagadas n join plone27_gastos g on g.id=n.gasto
+        where g.entidad=ent.account_id group by to_char(g.fecha,'YYYY-MM')) x)
+  ) into r;
+  return r; end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0046_plone27_api_banca_completa.sql) ====================
+-- Placeta One · 0046 · Gestión completa por API de banco: delegaciones de organigrama y reclamaciones del banco acreedor.
+-- Requiere 0045. Idempotente. NO ejecutado en PostgreSQL: probar antes de producción.
+
+-- La unidad debe pertenecer a la entidad (CIP) del banco que llama
+create or replace function plone27_org_unidad_valida(p_bank uuid,p_cip text,p_unidad uuid) returns boolean
+language sql stable security definer set search_path=public as $$
+  select exists(select 1 from plone27_unidades u join plone27_entidades e on e.account_id=u.entidad
+    where u.id=p_unidad and e.cip=p_cip and e.bank_id=p_bank) $$;
+
+create or replace function plone27_org_delegar(p_bank uuid,p_cip text,p_actor uuid,p_unidad uuid,p_persona uuid,p_permiso text,
+    p_limite numeric,p_hasta date,p_motivo text) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if not plone27_org_unidad_valida(p_bank,p_cip,p_unidad) then raise exception 'La unidad no pertenece a esta entidad'; end if;
+  perform plone27_delegar(p_unidad,p_persona,p_permiso,p_limite,p_hasta,p_motivo,p_actor);
+end $$;
+
+create or replace function plone27_org_revocar_delegacion(p_bank uuid,p_cip text,p_actor uuid,p_id uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  if not exists(select 1 from plone27_delegaciones d join plone27_unidades u on u.id=d.unidad
+                join plone27_entidades e on e.account_id=u.entidad where d.id=p_id and e.cip=p_cip and e.bank_id=p_bank) then
+    raise exception 'La delegación no pertenece a esta entidad';
+  end if;
+  perform plone27_revocar_delegacion(p_id,p_actor);
+end $$;
+
+-- Reclamaciones que afectan al banco: como acreedor (debe devolver) o como deudor (su cliente reclama)
+create or replace function plone27_bk_disputas(p_bank uuid) returns jsonb
+language sql stable security definer set search_path=public as $$
+  select coalesce(jsonb_agg(to_jsonb(r) order by r.creada desc),'[]'::jsonb) from (
+    select dsp.id, dsp.debt_id, dsp.estado, dsp.monto_reclamado, dsp.monto_devuelto, dsp.motivo, dsp.plazo_resolucion, dsp.creada,
+      case when ca.bank_id=p_bank then 'acreedor' else 'deudor' end as rol
+    from plone27_disputas dsp
+    join plone27_debts dd on dd.id=dsp.debt_id
+    join plone27_accounts ca on ca.id=dd.creditor_account
+    join plone27_accounts da on da.id=dsp.account_id
+    where ca.bank_id=p_bank or da.bank_id=p_bank) r $$;
+
+-- Solo el banco acreedor resuelve. El operador identifica a la persona del banco: dos operadores distintos para devoluciones grandes.
+create or replace function plone27_bk_disputa_resolver(p_bank uuid,p_id uuid,p_decision text,p_monto numeric,p_operador text) returns jsonb
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare d plone27_debts; ca uuid; begin
+  select dd.* into d from plone27_disputas dsp join plone27_debts dd on dd.id=dsp.debt_id where dsp.id=p_id;
+  if d.id is null then raise exception 'Reclamación no encontrada'; end if;
+  select a.bank_id into ca from plone27_accounts a where a.id=d.creditor_account;
+  if ca is distinct from p_bank then raise exception 'Solo el banco acreedor puede resolver esta reclamación'; end if;
+  if coalesce(length(p_operador),0)<1 then raise exception 'Indica el operador que resuelve'; end if;
+  return plone27_disputa_resolver(p_id,p_decision,p_monto,md5(p_bank::text||':'||p_operador)::uuid);
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
 do $$ declare t text; f text; begin
   for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
     execute format('alter table %I enable row level security',t);
