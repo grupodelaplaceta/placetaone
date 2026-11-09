@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const { data, error } = await s.db.rpc("plone27_empresa_detalle", { p_bank: bank, p_empresa: empresa });
     return error ? Response.json({ error: error.message }, { status: 422 }) : Response.json({ empresa: data });
   }
-  const { data, error } = await s.db.from("plone27_empresas").select("id,nombre,identificador_fiscal,estado,creada").eq("bank_id", bank).order("creada", { ascending: false });
+  const { data, error } = await s.db.from("plone27_empresas").select("id,nombre,identificador_fiscal,estado,creada,entidad_cip").eq("bank_id", bank).order("creada", { ascending: false });
   return error ? Response.json({ error: error.message }, { status: 500 }) : Response.json({ empresas: data ?? [] });
 }
 

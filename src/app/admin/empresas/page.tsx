@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 
 // Empresas de una entidad: alta, titulares, pasarela (alta, rotación de clave y contrato), y estado.
 type Banco = { id: string; code: string; name: string; nombre_visible?: string | null };
-type Emp = { id: string; nombre: string; identificador_fiscal: string; estado: string; creada: string };
+type Emp = { id: string; nombre: string; identificador_fiscal: string; estado: string; creada: string; entidad_cip?: string | null };
 type Det = { titulares: { dip: string; rol: string; desde: string; hasta: string | null }[]; cuentas: { iban: string; nombre: string }[];
   pasarela: { client_id: string; activa: boolean } | null; contrato_version: number | null };
 type Nodo = { id: string; padre: string | null; tipo: string; nombre: string; codigo: string | null; activa: boolean };
@@ -67,15 +67,15 @@ export default function EmpresasAdmin() {
         <>
           <Card titulo="Empresas">
             <table style={{ width: "100%", fontSize: 14 }}>
-              <thead><tr><th align="left">Nombre</th><th align="left">NIF</th><th align="left">Estado</th><th /></tr></thead>
+              <thead><tr><th align="left">Nombre</th><th align="left">CIP (identificador)</th><th align="left">Entidad institucional</th><th align="left">Estado</th><th /></tr></thead>
               <tbody>{empresas.map((e) => (
-                <tr key={e.id}><td>{e.nombre}</td><td className="mono">{e.identificador_fiscal}</td>
+                <tr key={e.id}><td>{e.nombre}</td><td className="mono">{e.identificador_fiscal}</td><td>{e.entidad_cip ? <Badge tono="ok">{e.entidad_cip}</Badge> : <Badge tono="bad">sin vincular</Badge>}</td>
                   <td><Badge tono={e.estado === "activa" ? "ok" : "bad"}>{e.estado}</Badge></td>
                   <td><button className="btn" onClick={() => setSel(e.id)}>Abrir</button></td></tr>))}</tbody>
             </table>
             <div style={{ marginTop: 10 }}>
               <input style={campo} placeholder="Nombre" value={f.nombre ?? ""} onChange={(e) => set("nombre", e.target.value)} />
-              <input style={campo} placeholder="Identificador fiscal" value={f.fiscal ?? ""} onChange={(e) => set("fiscal", e.target.value)} />
+              <input style={campo} placeholder="CIP de la entidad (CIP-00000001)" value={f.fiscal ?? ""} onChange={(e) => set("fiscal", e.target.value)} />
               <input style={campo} placeholder="DIP del titular inicial" value={f.tdip ?? ""} onChange={(e) => set("tdip", e.target.value)} />
               <input style={{ ...campo, minWidth: 260 }} placeholder="Cuentas de empresa (IBAN separados por comas)" value={f.cuentas ?? ""} onChange={(e) => set("cuentas", e.target.value)} />
               <button className="btn btn-primary" onClick={() => accion({ accion: "alta", nombre: f.nombre ?? "", identificador_fiscal: f.fiscal ?? "", titular_dip: f.tdip ?? "",
@@ -114,7 +114,7 @@ export default function EmpresasAdmin() {
                 <button className="btn" onClick={() => accion({ accion: "pasarela_rotar", dip_actor: f.actor ?? "" }, "Clave rotada.")}>Rotar clave</button>
               </Card>
 
-              <Card titulo="Ficha completa: entidad institucional, organigrama, presupuesto y nóminas">
+              <Card titulo="Entidad institucional (CIP), organigrama, presupuesto y nóminas">
                 {!ficha?.entidad ? (
                   <>
                     <p className="muted">Esta empresa no tiene entidad institucional vinculada. Vincúlala para ver su organigrama, presupuesto por departamento y nóminas.</p>
