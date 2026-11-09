@@ -47,7 +47,7 @@ export default function EmpresasAdmin() {
       setMsg(ok);
       if (r.clave) setClave(r.clave);
       if (r.contrato?.texto) setContrato(r.contrato.texto);
-      cargarEmpresas(bank); cargarDetalle(bank, sel);
+      cargarEmpresas(bank); cargarDetalle(bank, sel); cargarFicha(bank, sel);
     } catch (e) { setMsg((e as Error).message); }
   };
 

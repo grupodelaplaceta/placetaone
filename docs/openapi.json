@@ -7170,6 +7170,109 @@
         },
         "description": "decision: devolucion o rechazada. Las devoluciones de más de 1.000 Pz requieren dos operadores distintos: el primero deja constancia (estado pendiente_segunda_aprobacion) y el segundo ejecuta."
       }
+    },
+    "/api/v1/bk/empresas/{id}/entidad/crear": {
+      "post": {
+        "summary": "Crear la entidad institucional de la empresa sobre una de sus cuentas y vincularla",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip_actor": "12345678Z",
+                "iban": "PZ-0000-0007",
+                "nombre": "Comunicaciones SL"
+              }
+            }
+          }
+        },
+        "description": "Solo un titular activo de la empresa. La cuenta elegida (o la primera cuenta de empresa) recibe el CIP: su respuesta de cuentas pasa a informar cip con cip_origen 'cuenta'. Si esa cuenta ya tenía entidad, se reutiliza.",
+        "responses": {
+          "201": {
+            "description": "Entidad creada y vinculada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cip": "CIP-00000042",
+                  "aviso": "La entidad está vinculada. Crea ahora las unidades del organigrama con POST /api/v1/bk/organigrama (accion: unidad)."
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La empresa ya tiene entidad, la cuenta no es de la empresa, o el actor no es titular"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/datos": {
+      "put": {
+        "summary": "Corregir nombre e identificador (CIP) de la empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nombre": "Empresa Ejemplo",
+                "identificador_fiscal": "CIP-00000001",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        },
+        "description": "Solo un titular activo. El identificador es el CIP de la entidad: si coincide con una entidad activa de tu banco, la empresa queda vinculada automáticamente.",
+        "responses": {
+          "200": {
+            "description": "Datos corregidos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "actualizada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Datos no válidos, el identificador ya existe o el actor no es titular"
+          }
+        }
+      }
     }
   },
   "x-webhooks": {

@@ -26,5 +26,7 @@ else
 fi
 echo "== Coherencia de llamadas RPC (paso 7)"
 if python3 rpc_coherencia.py .. ; then :; else fallos=$((fallos+1)); fi
+echo "== Funciones con firma cambiante (paso 8)"
+if python3 firmas_sql.py .. ; then :; else fallos=$((fallos+1)); fi
 echo; if [ $fallos -eq 0 ]; then echo "VERIFICACIÓN: todos los pasos obligatorios pasan."; else echo "VERIFICACIÓN: $fallos paso(s) fallan."; fi
 exit $fallos
