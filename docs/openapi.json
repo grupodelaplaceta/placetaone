@@ -910,7 +910,9 @@
                       "tipo": "personal",
                       "rol": "holder",
                       "saldo": 1520.4,
-                      "disponible": 1500.4
+                      "disponible": 1500.4,
+                      "cip": "CIP-00000001",
+                      "cip_origen": "cuenta"
                     }
                   ]
                 }
@@ -941,7 +943,8 @@
             "bearerAuth": []
           }
         ],
-        "x-grupo": "Usuario"
+        "x-grupo": "Usuario",
+        "description": "Incluye el CIP de la entidad institucional (cip) y su origen (cip_origen: cuenta o empresa). cip es null si la cuenta no pertenece a una entidad institucional."
       },
       "post": {
         "tags": [
@@ -5127,14 +5130,17 @@
                       "nombre": "Cuenta corriente",
                       "tipo": "personal",
                       "estado": "active",
-                      "disponible": 1500.4
+                      "disponible": 1500.4,
+                      "cip": "CIP-00000001",
+                      "cip_origen": "cuenta"
                     }
                   ]
                 }
               }
             }
           }
-        }
+        },
+        "description": "Incluye el CIP de la entidad institucional (cip) y su origen (cip_origen: cuenta o empresa). cip es null si la cuenta no pertenece a una entidad institucional."
       }
     },
     "/api/v1/bk/webhooks/entregas/{id}/reintentar": {
