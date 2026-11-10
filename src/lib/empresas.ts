@@ -38,3 +38,12 @@ export async function rotarClaveEmpresa(db: Db, bankId: string, empresaId: strin
   if (r.error) throw new Error(r.error.message);
   return { client_id: r.data as string, clave };
 }
+
+// CIP (entidad institucional) de una empresa de la entidad del banco. Error si la empresa aún no tiene entidad.
+export async function cipDeEmpresa(db: Db, bankId: string, empresaId: string): Promise<{ cip: string } | { error: string }> {
+  const r = await db.from("plone27_empresas").select("entidad_cip").eq("id", empresaId).eq("bank_id", bankId).maybeSingle();
+  if (r.error) return { error: r.error.message };
+  if (!r.data) return { error: "Empresa no encontrada en tu entidad" };
+  if (!r.data.entidad_cip) return { error: "La empresa todavía no tiene entidad institucional: añade una cuenta de empresa" };
+  return { cip: r.data.entidad_cip as string };
+}

@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const accion = String(b?.accion ?? "");
   let res;
   if (accion === "unidad") {
-    res = await a.db.rpc("plone27_org_unidad_nueva", { p_bank: a.c.bank_id, p_cip: cip, p_actor: actorRes.data, p_tipo: String(b?.tipo ?? ""), p_padre: b?.padre ? String(b.padre) : null, p_nombre: String(b?.nombre ?? ""), p_codigo: b?.codigo ? String(b.codigo) : null });
+    res = await a.db.rpc("plone27_org_unidad_nueva", { p_bank: a.c.bank_id, p_cip: cip, p_actor: actorRes.data, p_tipo: String(b?.tipo ?? ""), p_padre: String(b?.padre ?? b?.superior ?? b?.unidad_superior ?? b?.parent ?? "") || null, p_nombre: String(b?.nombre ?? ""), p_codigo: b?.codigo ? String(b.codigo) : null });
     return res.error ? Response.json({ error: res.error.message }, { status: 422 }) : Response.json({ unidad: res.data }, { status: 201 });
   }
   if (accion === "puesto") {

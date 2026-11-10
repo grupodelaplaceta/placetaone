@@ -52,3 +52,15 @@ La empresa es su entidad institucional. Al añadir su primera cuenta de empresa 
 - No hay cron para esto: la entidad se crea en el momento en que se añade la cuenta. Si quedara alguna pendiente, el botón «Crear entidad institucional» de la ficha la crea.
 - Si la creación falla, el motivo queda en la auditoría y se muestra en la ficha («Último error automático»).
 - El DIP del titular es opcional al añadir cuentas o al crear la entidad.
+
+## Organigrama inicial (0055)
+La entidad de cada empresa nace con: una unidad raíz (Junta), un puesto de titular con todos los permisos, y el titular de la empresa nombrado en ese puesto. Así el organigrama se puede cambiar desde el primer momento.
+Para cambiar el organigrama por API, `dip_actor` debe ser el DIP del titular de la empresa (no la clave del banco). Sin ese permiso, la API responde 422 «Sin permiso para cambiar el organigrama».
+
+## Unidades del organigrama (0056)
+Una unidad que no es la Junta se cuelga sola de la Junta raíz de la entidad si no indicas `padre`. Ejemplo válido:
+`POST /api/v1/bk/organigrama` con `{ "accion": "unidad", "dip_actor": "<DIP del titular>", "tipo": "departamento", "nombre": "Comunicaciones" }`.
+
+## Unidad superior (0057)
+Para colgar una unidad de otra, indica el identificador de la unidad superior en `padre` (también se acepta `superior`, `unidad_superior` o `parent`). Si no indicas nada, cuelga de la Junta raíz, y si la entidad no tiene Junta raíz, esta se crea automáticamente.
+Un departamento solo puede colgar de una Junta o una Administración de la misma entidad.

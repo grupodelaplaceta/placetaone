@@ -3478,7 +3478,7 @@
             }
           }
         },
-        "description": "Acciones nuevas: delegar (unidad, dip, permiso, limite, hasta, motivo) y revocar_delegacion (id)."
+        "description": "Acciones nuevas: delegar (unidad, dip, permiso, limite, hasta, motivo) y revocar_delegacion (id). Las acciones de cambio exigen que dip_actor sea una persona con puesto de organigrama en la entidad. La entidad nace con un puesto de titular y el titular de la empresa nombrado: usa su DIP como dip_actor. Si no indicas padre, una unidad que no sea junta se cuelga de la junta raíz de la entidad. Para la unidad superior usa padre (o superior, unidad_superior o parent). Sin padre, se cuelga de la Junta raíz de la entidad, que se crea si no existe."
       }
     },
     "/api/v1/bk/presupuestos": {
@@ -7361,6 +7361,276 @@
             "description": "La empresa no tiene cuentas activas"
           }
         }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/complementos": {
+      "get": {
+        "summary": "Catálogo de complementos de la entidad de la empresa",
+        "x-permiso": "nominas:read",
+        "x-grupo": "Nómina y contratos",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "complementos": [
+                    {
+                      "id": "d4c3b2a1-0300-4e5f-8a6b-7c8d9e0f1a2b",
+                      "codigo": "ACT_CAMPO",
+                      "nombre": "Complemento de actividad de campo",
+                      "tipo": "variable",
+                      "importe_base": 120,
+                      "activo": true
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Crear un complemento de actividad en el catálogo",
+        "x-permiso": "retribuciones:gestionar",
+        "x-grupo": "Nómina y contratos",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Complemento creado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "complemento": "d4c3b2a1-0300-4e5f-8a6b-7c8d9e0f1a2b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Código, tipo o permiso no válidos"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "codigo": "ACT_CAMPO",
+                "nombre": "Complemento de actividad de campo",
+                "tipo": "variable",
+                "importe_base": 120,
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        },
+        "description": "codigo: 2 a 20 caracteres A-Z, 0-9 y _. tipo: fijo o variable. dip_actor: persona con permiso de retribuir en la entidad."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/complementos/asignaciones": {
+      "post": {
+        "summary": "Asignar un complemento de actividad a un contrato",
+        "x-permiso": "retribuciones:gestionar",
+        "x-grupo": "Nómina y contratos",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Asignado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "asignacion": "5f4e3d2c-0301-4a6b-9c7d-8e9f0a1b2c3d"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Contrato o complemento no encontrados, ya asignado, o sin permiso"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "retribucion": "6a5b4c3d-0302-4b7c-8d8e-9f0a1b2c3d4e",
+                "complemento": "d4c3b2a1-0300-4e5f-8a6b-7c8d9e0f1a2b",
+                "importe": 150,
+                "desde": "2026-12-01",
+                "motivo": "Turno de campo ampliado",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        },
+        "description": "El contrato es una retribución de la entidad (ver GET /api/v1/bk/retribuciones). Sin importe, se usa el importe base del complemento."
+      }
+    },
+    "/api/v1/bk/empresas/{id}/complementos/asignaciones/{asig}/retirar": {
+      "post": {
+        "summary": "Retirar un complemento de un contrato a partir de una fecha",
+        "x-permiso": "retribuciones:gestionar",
+        "x-grupo": "Nómina y contratos",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "retirada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Asignación no encontrada o ya retirada"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "asig",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la asignación",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "hasta": "2026-12-31",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/nomina/conceptos": {
+      "get": {
+        "summary": "Conceptos de nómina de un periodo, para emitir la nómina en NEXE",
+        "x-permiso": "nominas:read",
+        "x-grupo": "Nómina y contratos",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "example": {
+                  "periodo": "2026-12",
+                  "conceptos": [
+                    {
+                      "persona": "23749931M",
+                      "tipo": "retribucion",
+                      "codigo": null,
+                      "concepto": "Salario base",
+                      "importe": 2100,
+                      "periodo": "2026-12"
+                    },
+                    {
+                      "persona": "23749931M",
+                      "tipo": "complemento",
+                      "codigo": "ACT_CAMPO",
+                      "concepto": "Complemento de actividad de campo",
+                      "importe": 150,
+                      "periodo": "2026-12"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "periodo",
+            "in": "query",
+            "required": true,
+            "description": "AAAA-MM",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Interfaz para NEXE: una línea por retribución y por complemento vigente en el periodo. Solo lectura: no emite nada."
       }
     }
   },
