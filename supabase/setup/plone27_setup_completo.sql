@@ -8059,6 +8059,335 @@ do $$ declare t text; f text; begin
     execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
 end $$;
 
+-- ==================== MIGRACIÓN (0050_plone27_crear_entidad_identificador.sql) ====================
+-- Placeta One · 0050 · Crear la entidad de una empresa y hacer que su identificador sea el CIP nuevo.
+-- Mensaje claro cuando el CIP indicado no existe en el banco. Requiere 0049. Idempotente. NO ejecutado en PostgreSQL.
+
+create or replace function plone27_empresa_vincular_entidad(p_bank uuid,p_empresa uuid,p_cip text,p_actor uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; begin
+  select * into e from plone27_empresas where id=p_empresa and bank_id=p_bank;
+  if e.id is null then raise exception 'Empresa no encontrada'; end if;
+  if not exists(select 1 from plone27_entidades x where x.cip=upper(p_cip) and x.bank_id=p_bank and x.activa) then
+    raise exception 'La entidad % no existe o está inactiva en tu banco. Si no tienes entidad, créala sobre una cuenta de la empresa', p_cip;
+  end if;
+  if exists(select 1 from plone27_empresas o where o.entidad_cip=upper(p_cip) and o.id<>p_empresa) then
+    raise exception 'Esa entidad ya está vinculada a otra empresa';
+  end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede vincular una entidad';
+  end if;
+  update plone27_empresas set entidad_cip=upper(p_cip), identificador_fiscal=upper(p_cip) where id=p_empresa;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_vincular_entidad','empresa',p_empresa::text,jsonb_build_object('cip',p_cip));
+end $$;
+
+create or replace function plone27_empresa_crear_entidad(p_bank uuid,p_empresa uuid,p_iban text,p_nombre text,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; v_aid uuid; v_cip text; v_nombre text; begin
+  select * into e from plone27_empresas where id=p_empresa and bank_id=p_bank for update;
+  if e.id is null or e.estado<>'activa' then raise exception 'Empresa no encontrada o no activa'; end if;
+  if e.entidad_cip is not null then raise exception 'La empresa ya tiene una entidad vinculada (%)', e.entidad_cip; end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede crear su entidad';
+  end if;
+  if coalesce(p_iban,'')<>'' then
+    select a.id into v_aid from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id
+      where ec.empresa_id=p_empresa and a.iban=p_iban;
+    if v_aid is null then raise exception 'La cuenta no pertenece a esta empresa'; end if;
+  else
+    select ec.account_id into v_aid from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id
+      where ec.empresa_id=p_empresa and a.status='active' order by a.created_at limit 1;
+    if v_aid is null then raise exception 'La empresa no tiene cuentas de empresa'; end if;
+  end if;
+  v_nombre:=coalesce(nullif(p_nombre,''),e.nombre);
+  select x.cip into v_cip from plone27_entidades x where x.account_id=v_aid;
+  if v_cip is null then
+    v_cip:=plone27_entidad_alta(p_bank,v_aid,v_nombre,p_actor);
+  end if;
+  if exists(select 1 from plone27_empresas o where o.entidad_cip=v_cip and o.id<>p_empresa) then
+    raise exception 'Esa entidad ya está vinculada a otra empresa';
+  end if;
+  update plone27_empresas set entidad_cip=v_cip, identificador_fiscal=v_cip where id=p_empresa;
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_crear_entidad','empresa',p_empresa::text,jsonb_build_object('cip',v_cip,'cuenta',v_aid));
+  return v_cip; end $$;
+
+-- ==================== MIGRACIÓN (0051_plone27_empresa_entidad_por_cuenta.sql) ====================
+-- Placeta One · 0051 · Empresa y entidad son lo mismo: si una cuenta de la empresa ya es una entidad del banco, se vincula.
+-- Crear la entidad reutiliza la existente. Mensajes que dicen qué empresa ya tiene la entidad. Requiere 0050. Idempotente.
+
+-- Vinculación automática: por identificador (CIP) o por cuenta de la empresa que ya es una entidad
+create or replace function plone27_empresa_autovincular(p_bank uuid,p_empresa uuid) returns void
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; v_cip text; begin
+  select * into e from plone27_empresas where id=p_empresa;
+  if e.id is null or e.entidad_cip is not null then return; end if;
+  select en.cip into v_cip from plone27_entidades en
+    where en.cip=upper(e.identificador_fiscal) and en.bank_id=p_bank and en.activa;
+  if v_cip is null then
+    select en.cip into v_cip from plone27_empresa_cuentas ec
+      join plone27_entidades en on en.account_id=ec.account_id
+      where ec.empresa_id=p_empresa and en.bank_id=p_bank and en.activa limit 1;
+  end if;
+  if v_cip is null then return; end if;
+  if exists(select 1 from plone27_empresas o where o.entidad_cip=v_cip and o.id<>p_empresa) then return; end if;
+  update plone27_empresas set entidad_cip=v_cip where id=p_empresa;
+  update plone27_empresas set identificador_fiscal=v_cip where id=p_empresa
+    and not exists(select 1 from plone27_empresas o where o.bank_id=p_bank and o.identificador_fiscal=v_cip and o.id<>p_empresa);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(null,'empresa_autovinculada','empresa',p_empresa::text,jsonb_build_object('cip',v_cip));
+end $$;
+
+-- Crear la entidad de la empresa: reutiliza la entidad que ya exista en esa cuenta
+create or replace function plone27_empresa_crear_entidad(p_bank uuid,p_empresa uuid,p_iban text,p_nombre text,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; v_aid uuid; v_cip text; v_nombre text; v_activa boolean; v_otra text; begin
+  select * into e from plone27_empresas where id=p_empresa and bank_id=p_bank for update;
+  if e.id is null or e.estado<>'activa' then raise exception 'Empresa no encontrada o no activa'; end if;
+  if e.entidad_cip is not null then raise exception 'La empresa ya tiene una entidad vinculada (%)', e.entidad_cip; end if;
+  if not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede crear su entidad';
+  end if;
+  if coalesce(p_iban,'')<>'' then
+    select a.id into v_aid from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id
+      where ec.empresa_id=p_empresa and a.iban=p_iban;
+    if v_aid is null then raise exception 'La cuenta no pertenece a esta empresa'; end if;
+  else
+    select ec.account_id into v_aid from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id
+      where ec.empresa_id=p_empresa and a.status='active' order by a.created_at limit 1;
+    if v_aid is null then raise exception 'La empresa no tiene cuentas de empresa'; end if;
+  end if;
+  -- ¿La cuenta ya es una entidad? Se reutiliza.
+  select x.cip, x.activa into v_cip, v_activa from plone27_entidades x where x.account_id=v_aid and x.bank_id=p_bank;
+  if v_cip is null then
+    v_nombre:=coalesce(nullif(p_nombre,''),e.nombre);
+    v_cip:=plone27_entidad_alta(p_bank,v_aid,v_nombre,p_actor);
+  elsif not v_activa then
+    raise exception 'La entidad % de esa cuenta está inactiva en tu banco', v_cip;
+  end if;
+  select o.nombre into v_otra from plone27_empresas o where o.entidad_cip=v_cip and o.id<>p_empresa;
+  if v_otra is not null then
+    raise exception 'La entidad % ya está vinculada a la empresa "%"', v_cip, v_otra;
+  end if;
+  update plone27_empresas set entidad_cip=v_cip where id=p_empresa;
+  update plone27_empresas set identificador_fiscal=v_cip where id=p_empresa
+    and not exists(select 1 from plone27_empresas o where o.bank_id=p_bank and o.identificador_fiscal=v_cip and o.id<>p_empresa);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_crear_entidad','empresa',p_empresa::text,jsonb_build_object('cip',v_cip,'cuenta',v_aid));
+  return v_cip; end $$;
+
+-- Empresas existentes: se vinculan ahora si su cuenta ya es una entidad del banco
+do $$ declare r record; begin
+  for r in select e.id, e.bank_id from plone27_empresas e where e.entidad_cip is null loop
+    perform plone27_empresa_autovincular(r.bank_id, r.id);
+  end loop;
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0052_plone27_empresa_es_entidad.sql) ====================
+-- Placeta One · 0052 · La empresa es su entidad institucional: se crea automáticamente al añadir su primera cuenta de empresa.
+-- Requiere 0051. Idempotente. NO ejecutado en PostgreSQL: probar antes de producción.
+
+-- Garantiza la entidad de la empresa: reutiliza la que ya exista en una de sus cuentas, o la crea sobre la primera cuenta de empresa
+create or replace function plone27_empresa_asegurar_entidad(p_empresa uuid,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; v_cip text; v_aid uuid; begin
+  select * into e from plone27_empresas where id=p_empresa for update;
+  if e.id is null then return null; end if;
+  if e.entidad_cip is not null then return e.entidad_cip; end if;
+  select en.cip into v_cip from plone27_empresa_cuentas ec
+    join plone27_entidades en on en.account_id=ec.account_id
+    where ec.empresa_id=p_empresa and en.bank_id=e.bank_id and en.activa limit 1;
+  if v_cip is null then
+    select a.id into v_aid from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id
+      where ec.empresa_id=p_empresa and a.status='active' and a.kind='business' order by a.created_at limit 1;
+    if v_aid is null then return null; end if;
+    v_cip:=plone27_entidad_alta(e.bank_id,v_aid,e.nombre,p_actor);
+  end if;
+  if exists(select 1 from plone27_empresas o where o.entidad_cip=v_cip and o.id<>p_empresa) then return null; end if;
+  update plone27_empresas set entidad_cip=v_cip where id=p_empresa;
+  update plone27_empresas set identificador_fiscal=v_cip where id=p_empresa
+    and not exists(select 1 from plone27_empresas o where o.bank_id=e.bank_id and o.identificador_fiscal=v_cip and o.id<>p_empresa);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_entidad_automatica','empresa',p_empresa::text,jsonb_build_object('cip',v_cip));
+  return v_cip; end $$;
+
+-- Cada cuenta nueva de empresa asegura la entidad de la empresa
+create or replace function plone27_trg_empresa_cuentas_entidad() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  perform plone27_empresa_asegurar_entidad(new.empresa_id,null);
+  return new; end $$;
+drop trigger if exists trg_empresa_cuentas_entidad on plone27_empresa_cuentas;
+drop trigger if exists trg_empresa_cuentas_entidad on plone27_empresa_cuentas;
+create trigger trg_empresa_cuentas_entidad after insert on plone27_empresa_cuentas
+  for each row execute function plone27_trg_empresa_cuentas_entidad();
+
+-- Empresas existentes con cuentas y sin entidad: se resuelven ahora
+do $$ declare r record; begin
+  for r in select id from plone27_empresas where entidad_cip is null loop
+    perform plone27_empresa_asegurar_entidad(r.id,null);
+  end loop;
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0053_plone27_empresa_cuentas_entidad_forzable.sql) ====================
+-- Placeta One · 0053 · Añadir cuentas a la empresa y crear su entidad de forma explícita.
+-- La creación automática no hace fallar el alta: si no puede, deja constancia y el botón la fuerza. Requiere 0052. Idempotente.
+
+-- Garantiza la entidad: reutiliza la que ya exista en una cuenta de la empresa, o la crea sobre la mejor cuenta disponible
+create or replace function plone27_empresa_asegurar_entidad(p_empresa uuid,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; v_cip text; v_aid uuid; v_act boolean; begin
+  select * into e from plone27_empresas where id=p_empresa for update;
+  if e.id is null then return null; end if;
+  if e.entidad_cip is not null then return e.entidad_cip; end if;
+  select en.cip into v_cip from plone27_empresa_cuentas ec join plone27_entidades en on en.account_id=ec.account_id
+    where ec.empresa_id=p_empresa and en.bank_id=e.bank_id and en.activa limit 1;
+  if v_cip is null then
+    select a.id into v_aid from plone27_empresa_cuentas ec join plone27_accounts a on a.id=ec.account_id
+      where ec.empresa_id=p_empresa and a.status is distinct from 'closed'
+      order by (a.kind='business') desc, (a.status='active') desc, a.created_at limit 1;
+    if v_aid is null then return null; end if;
+    select x.cip, x.activa into v_cip, v_act from plone27_entidades x where x.account_id=v_aid;
+    if v_cip is not null and not v_act then raise exception 'La entidad % de esa cuenta está inactiva', v_cip; end if;
+    if v_cip is null then v_cip:=plone27_entidad_alta(e.bank_id,v_aid,e.nombre,p_actor); end if;
+  end if;
+  if exists(select 1 from plone27_empresas o where o.entidad_cip=v_cip and o.id<>p_empresa) then
+    raise exception 'La entidad % ya está vinculada a otra empresa', v_cip;
+  end if;
+  update plone27_empresas set entidad_cip=v_cip where id=p_empresa;
+  update plone27_empresas set identificador_fiscal=v_cip where id=p_empresa
+    and not exists(select 1 from plone27_empresas o where o.bank_id=e.bank_id and o.identificador_fiscal=v_cip and o.id<>p_empresa);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_entidad','empresa',p_empresa::text,jsonb_build_object('cip',v_cip));
+  return v_cip; end $$;
+
+-- Al insertar una cuenta de empresa se intenta asegurar la entidad; si falla, no se bloquea el alta
+create or replace function plone27_trg_empresa_cuentas_entidad() returns trigger
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+begin
+  begin
+    perform plone27_empresa_asegurar_entidad(new.empresa_id,null);
+  exception when others then
+    insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+      values(null,'empresa_entidad_pendiente','empresa',new.empresa_id::text,jsonb_build_object('error',sqlerrm));
+  end;
+  return new; end $$;
+
+-- Añadir una cuenta a la empresa: da permisos a sus titulares y asegura la entidad
+create or replace function plone27_empresa_cuenta_anadir(p_bank uuid,p_empresa uuid,p_iban text,p_actor uuid) returns text
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare e plone27_empresas; v_aid uuid; v_cip text; begin
+  select * into e from plone27_empresas where id=p_empresa and bank_id=p_bank;
+  if e.id is null or e.estado<>'activa' then raise exception 'Empresa no encontrada o no activa'; end if;
+  if p_actor is not null and not exists(select 1 from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.persona=p_actor and t.rol='titular' and t.hasta is null) then
+    raise exception 'Solo un titular de la empresa puede añadir cuentas';
+  end if;
+  select a.id into v_aid from plone27_accounts a where a.iban=p_iban and a.bank_id=p_bank;
+  if v_aid is null then raise exception 'La cuenta % no existe en tu banco', p_iban; end if;
+  insert into plone27_empresa_cuentas(empresa_id,account_id) values(p_empresa,v_aid) on conflict do nothing;
+  insert into plone27_account_members(account_id,user_id,role)
+    select v_aid, t.persona, case t.rol when 'titular' then 'holder' when 'autorizado' then 'coholder' else 'authorized' end
+    from plone27_empresa_titulares t where t.empresa_id=p_empresa and t.hasta is null
+    on conflict do nothing;
+  v_cip:=plone27_empresa_asegurar_entidad(p_empresa,p_actor);
+  insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+    values(p_actor,'empresa_cuenta_anadir','empresa',p_empresa::text,jsonb_build_object('iban',p_iban));
+  return v_cip; end $$;
+
+-- Empresas existentes sin entidad: se resuelven ahora
+do $$ declare r record; begin
+  for r in select id from plone27_empresas where entidad_cip is null loop
+    begin
+      perform plone27_empresa_asegurar_entidad(r.id,null);
+    exception when others then
+      insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+        values(null,'empresa_entidad_pendiente','empresa',r.id::text,jsonb_build_object('error',sqlerrm));
+    end;
+  end loop;
+end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
+-- ==================== MIGRACIÓN (0054_plone27_entidades_automaticas.sql) ====================
+-- Placeta One · 0054 · La entidad de cada empresa se crea y se repara sola (disparador + cron cada 15 minutos).
+-- Los errores quedan en la auditoría y se muestran en la ficha. Requiere 0053. Idempotente. NO ejecutado en PostgreSQL.
+
+-- Repara todas las empresas activas con cuentas y sin entidad. Devuelve cuántas ha resuelto.
+create or replace function plone27_empresa_reparar_entidades() returns int
+language plpgsql security definer set search_path=public as $$
+#variable_conflict use_column
+declare r record; n int:=0; begin
+  for r in select e.id from plone27_empresas e
+           where e.entidad_cip is null and e.estado='activa'
+             and exists(select 1 from plone27_empresa_cuentas ec where ec.empresa_id=e.id) loop
+    begin
+      if plone27_empresa_asegurar_entidad(r.id,null) is not null then n:=n+1; end if;
+    exception when others then
+      insert into plone27_audit_log(actor,action,entity,entity_id,detail)
+        values(null,'empresa_entidad_pendiente','empresa',r.id::text,jsonb_build_object('error',sqlerrm));
+    end;
+  end loop;
+  return n; end $$;
+
+-- Pasada inicial sobre lo que ya existe
+do $$ begin perform plone27_empresa_reparar_entidades(); end $$;
+
+-- Seguridad (mismo patrón; no legibles desde el panel)
+do $$ declare t text; f text; begin
+  for t in select tablename from pg_tables where schemaname='public' and tablename like 'plone27\_%' loop
+    execute format('alter table %I enable row level security',t);
+    if t not in('plone27_api_clients','plone27_webhooks','plone27_user_sessions','plone27_api_nonces','plone27_personas') and not exists(select 1 from pg_policies p where p.tablename=t and p.policyname='staff_read') then
+      execute format('create policy staff_read on %I for select using (plone27_has_role(array[''auditor'',''financiero'',''fiscal'',''financiacion'',''gestor_bancario'',''aprobador'']))',t); end if;
+  end loop;
+  for f in select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname like 'plone27\_%' and p.proname not in('plone27_has_role','plone27_bank_visible') loop
+    execute format('revoke all on function %s from public,anon,authenticated',f); execute format('grant execute on function %s to service_role',f); end loop;
+end $$;
+
 -- ==================== DATOS DE LA NORMA Y CUENTAS (0011_seed_norma_tributos_2027.sql) ====================
 -- Placeta One · seed 0011 · Norma de tributos (Código Normativo | Tributos, Junta 26/09/2026)
 -- Ejecutar en staging y luego en producción, DESPUÉS de la migración 0011. No va en CI (acceptance.sql usa IGF e IRM).

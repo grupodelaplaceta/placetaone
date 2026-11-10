@@ -29,3 +29,26 @@ Migración 0047: escrita y comprobada estáticamente. **No ejecutada en PostgreS
 
 ## Identificador de empresa = CIP
 En la plataforma no existe NIF: el identificador de una empresa es el CIP de su entidad institucional. Cuando el identificador de una empresa coincide con el CIP de una entidad activa de su mismo banco, la empresa queda vinculada automáticamente (al darla de alta, al corregir sus datos y, para las existentes, en la migración 0049).
+
+## Crear la entidad de una empresa (0050)
+- Desde la banca: `POST /api/v1/bk/empresas/{id}/entidad/crear`. La entidad recibe un CIP nuevo y el identificador de la empresa pasa a ser ese CIP.
+- Desde el panel (Junta): en la ficha de la empresa, «Crear entidad institucional».
+- Vincular un CIP que no existe en el banco devuelve un error explícito: la entidad debe existir y estar activa.
+
+## Empresa = entidad (0051)
+- Si una cuenta de la empresa ya es una entidad activa de su banco, la empresa queda vinculada a esa entidad automáticamente.
+- Crear la entidad reutiliza la entidad que ya exista en esa cuenta. Solo falla si esa entidad ya está vinculada a otra empresa (el mensaje indica cuál).
+
+## Empresa = entidad institucional (0052)
+La empresa es su entidad institucional. Al añadir su primera cuenta de empresa se crea automáticamente la entidad (o se reutiliza la que ya tenga esa cuenta), y el identificador de la empresa pasa a ser su CIP. No hay que vincular nada a mano; los endpoints de vinculación se mantienen solo por compatibilidad.
+
+## Añadir cuentas y forzar la entidad (0053)
+- Añadir una cuenta: `POST /api/v1/bk/empresas/{id}/cuentas` (o «Añadir cuenta» en el panel). Da acceso a los titulares según su rol y asegura la entidad.
+- Crear o reutilizar la entidad: `POST /api/v1/bk/empresas/{id}/asegurar-entidad` (o «Crear entidad institucional» en el panel).
+- La creación automática al insertar cuentas no bloquea el alta: si no puede crear la entidad, deja constancia en el registro de auditoría y el botón la crea.
+
+## Automático sin cron (0054)
+- Al añadir una cuenta a una empresa, su entidad institucional se crea sola (y reutiliza la que ya tenga esa cuenta).
+- No hay cron para esto: la entidad se crea en el momento en que se añade la cuenta. Si quedara alguna pendiente, el botón «Crear entidad institucional» de la ficha la crea.
+- Si la creación falla, el motivo queda en la auditoría y se muestra en la ficha («Último error automático»).
+- El DIP del titular es opcional al añadir cuentas o al crear la entidad.

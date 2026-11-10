@@ -11,7 +11,7 @@ type Det = { titulares: { dip: string; rol: string; desde: string; hasta: string
 type Nodo = { id: string; padre: string | null; tipo: string; nombre: string; codigo: string | null; activa: boolean };
 type Ficha = { empresa: { nombre: string; identificador_fiscal: string; estado: string }; entidad: { cip: string; nombre: string; activa: boolean } | null; ejercicio: number;
   organigrama?: Nodo[]; departamentos?: { id: string; nombre: string; tipo: string; presupuesto_anual: number; pagado: number; comprometido: number }[];
-  nominas?: { periodo: string; pagos: number; total: number }[] };
+  nominas?: { periodo: string; pagos: number; total: number }[]; ultimo_error?: string | null };
 function Arbol({ nodos, padre }: { nodos: Nodo[]; padre: string | null }) {
   const hijos = nodos.filter((n) => (n.padre ?? null) === padre);
   if (!hijos.length) return null;
@@ -67,9 +67,9 @@ export default function EmpresasAdmin() {
         <>
           <Card titulo="Empresas">
             <table style={{ width: "100%", fontSize: 14 }}>
-              <thead><tr><th align="left">Nombre</th><th align="left">CIP (identificador)</th><th align="left">Entidad institucional</th><th align="left">Estado</th><th /></tr></thead>
+              <thead><tr><th align="left">Nombre</th><th align="left">CIP (identificador)</th><th align="left">Entidad (CIP)</th><th align="left">Estado</th><th /></tr></thead>
               <tbody>{empresas.map((e) => (
-                <tr key={e.id}><td>{e.nombre}</td><td className="mono">{e.identificador_fiscal}</td><td>{e.entidad_cip ? <Badge tono="ok">{e.entidad_cip}</Badge> : <Badge tono="bad">sin vincular</Badge>}</td>
+                <tr key={e.id}><td>{e.nombre}</td><td className="mono">{e.identificador_fiscal}</td><td>{e.entidad_cip ? <Badge tono="ok">{e.entidad_cip}</Badge> : <Badge tono="neutral">sin entidad</Badge>}</td>
                   <td><Badge tono={e.estado === "activa" ? "ok" : "bad"}>{e.estado}</Badge></td>
                   <td><button className="btn" onClick={() => setSel(e.id)}>Abrir</button></td></tr>))}</tbody>
             </table>
@@ -90,7 +90,11 @@ export default function EmpresasAdmin() {
                   <thead><tr><th align="left">DIP</th><th align="left">Rol</th><th align="left">Desde</th><th align="left">Hasta</th></tr></thead>
                   <tbody>{det.titulares.map((t, i) => <tr key={i}><td className="mono">{t.dip}</td><td>{t.rol}</td><td>{t.desde}</td><td>{t.hasta ?? "activo"}</td></tr>)}</tbody>
                 </table>
-                <p>Cuentas: {det.cuentas.map((c) => c.iban).join(", ") || "ninguna"}</p>
+                <p>Cuentas de la empresa:</p>
+                <ul>{det.cuentas.map((c) => <li key={c.iban} className="mono">{c.iban}</li>)}</ul>
+                <input style={campo} placeholder="IBAN de la cuenta a añadir (PZ-…)" value={f.cuentaIban ?? ""} onChange={(e) => set("cuentaIban", e.target.value)} />
+                <input style={campo} placeholder="DIP de un titular (opcional)" value={f.cuentaActor ?? ""} onChange={(e) => set("cuentaActor", e.target.value)} />
+                <button className="btn btn-primary" onClick={() => accion({ accion: "anadir_cuenta", iban: f.cuentaIban ?? "", dip_actor: f.cuentaActor ?? "" }, "Cuenta añadida.")}>Añadir cuenta</button>
                 <input style={campo} placeholder="DIP de un titular que autoriza" value={f.actor ?? ""} onChange={(e) => set("actor", e.target.value)} />
                 <input style={campo} placeholder="DIP del nuevo titular / autorizado" value={f.dip ?? ""} onChange={(e) => set("dip", e.target.value)} />
                 <select style={campo} value={f.rol ?? "autorizado"} onChange={(e) => set("rol", e.target.value)}><option value="titular">Titular</option><option value="autorizado">Autorizado</option><option value="lector">Lector</option></select>
@@ -114,13 +118,12 @@ export default function EmpresasAdmin() {
                 <button className="btn" onClick={() => accion({ accion: "pasarela_rotar", dip_actor: f.actor ?? "" }, "Clave rotada.")}>Rotar clave</button>
               </Card>
 
-              <Card titulo="Entidad institucional (CIP), organigrama, presupuesto y nóminas">
+              <Card titulo="Organigrama, presupuesto y nóminas de la empresa">
                 {!ficha?.entidad ? (
                   <>
-                    <p className="muted">Esta empresa no tiene entidad institucional vinculada. Vincúlala para ver su organigrama, presupuesto por departamento y nóminas.</p>
-                    <input style={campo} placeholder="CIP de la entidad (CIP-00000001)" value={f.cip ?? ""} onChange={(e) => set("cip", e.target.value)} />
-                    <input style={campo} placeholder="DIP de un titular (actor)" value={f.actor ?? ""} onChange={(e) => set("actor", e.target.value)} />
-                    <button className="btn btn-primary" onClick={() => accion({ accion: "vincular_entidad", cip: f.cip ?? "", dip_actor: f.actor ?? "" }, "Entidad vinculada.")}>Vincular entidad</button>
+                  <p className="muted">La empresa todavía no tiene entidad institucional. Se crea sola al añadir una cuenta y se repara cada 15 minutos.</p>
+                  {ficha?.ultimo_error && <p style={{ color: "#b91c1c" }}>Último error automático: {ficha.ultimo_error}</p>}
+                    <button className="btn btn-primary" onClick={() => accion({ accion: "asegurar_entidad" }, "Entidad institucional creada.")}>Crear entidad institucional</button>
                   </>
                 ) : (
                   <>

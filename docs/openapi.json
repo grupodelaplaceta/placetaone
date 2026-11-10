@@ -6882,7 +6882,7 @@
             "claveServidor": []
           }
         ],
-        "description": "Una entidad solo puede estar vinculada a una empresa, y debe ser de tu entidad. Lo pide un titular activo de la empresa.",
+        "description": "Una entidad solo puede estar vinculada a una empresa, y debe ser de tu entidad. Lo pide un titular activo de la empresa. Nota: la empresa es su entidad institucional y esta se crea automáticamente al añadir su primera cuenta de empresa; este endpoint solo sirve por compatibilidad.",
         "parameters": [
           {
             "name": "id",
@@ -7204,7 +7204,7 @@
             }
           }
         },
-        "description": "Solo un titular activo de la empresa. La cuenta elegida (o la primera cuenta de empresa) recibe el CIP: su respuesta de cuentas pasa a informar cip con cip_origen 'cuenta'. Si esa cuenta ya tenía entidad, se reutiliza.",
+        "description": "Solo un titular activo de la empresa. La cuenta elegida (o la primera cuenta de empresa) recibe el CIP: su respuesta de cuentas pasa a informar cip con cip_origen 'cuenta'. Si esa cuenta ya tenía entidad, se reutiliza. Nota: la empresa es su entidad institucional y esta se crea automáticamente al añadir su primera cuenta de empresa; este endpoint solo sirve por compatibilidad.",
         "responses": {
           "201": {
             "description": "Entidad creada y vinculada",
@@ -7270,6 +7270,95 @@
           },
           "422": {
             "description": "Datos no válidos, el identificador ya existe o el actor no es titular"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/cuentas": {
+      "post": {
+        "summary": "Añadir una cuenta a la empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "iban": "PZ-0000-0007"
+              }
+            }
+          }
+        },
+        "description": "La entidad institucional de la empresa se crea automáticamente. dip_actor es opcional; si se indica, debe ser titular activo.",
+        "responses": {
+          "201": {
+            "description": "Cuenta añadida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "anadida": true,
+                  "cip": "CIP-00000004"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Cuenta no encontrada en tu banco o el actor no es titular"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/asegurar-entidad": {
+      "post": {
+        "summary": "Crear o reutilizar la entidad institucional de la empresa",
+        "x-permiso": "empresas:gestionar",
+        "x-grupo": "Cuenta institucional",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "La empresa es su entidad institucional. Reutiliza la entidad que ya tenga una de sus cuentas, o la crea sobre la mejor cuenta disponible.",
+        "responses": {
+          "200": {
+            "description": "Entidad",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cip": "CIP-00000004"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "La empresa no tiene cuentas activas"
           }
         }
       }

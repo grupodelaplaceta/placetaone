@@ -10,8 +10,11 @@ export async function GET(req: Request) {
   const bank = u.searchParams.get("bank_id") ?? "";
   const empresa = u.searchParams.get("empresa");
   if (u.searchParams.get("ficha") && empresa) {
-    const { data, error } = await s.db.rpc("plone27_empresa_ficha", { p_bank: bank, p_empresa: empresa });
-    return error ? Response.json({ error: error.message }, { status: 422 }) : Response.json({ ficha: data });
+    const fx = await s.db.rpc("plone27_empresa_ficha", { p_bank: bank, p_empresa: empresa });
+    if (fx.error) return Response.json({ error: fx.error.message }, { status: 422 });
+    const ae = await s.db.from("plone27_audit_log").select("detail").eq("action", "empresa_entidad_pendiente").eq("entity_id", empresa).order("at", { ascending: false }).limit(1).maybeSingle();
+    const ultimo = (ae.data?.detail as { error?: string } | null | undefined)?.error ?? null;
+    return Response.json({ ficha: fx.data ? { ...(fx.data as object), ultimo_error: ultimo } : null });
   }
   if (empresa) {
     const { data, error } = await s.db.rpc("plone27_empresa_detalle", { p_bank: bank, p_empresa: empresa });
@@ -30,6 +33,25 @@ export async function POST(req: Request) {
   const empresa = String(b?.empresa ?? "");
   const fail = (m: string) => Response.json({ error: m }, { status: 422 });
   try {
+    if (acc === "anadir_cuenta") {
+      const actor = b?.dip_actor ? await personaPorDip(s.db, String(b.dip_actor)) : null;
+      const { data, error } = await s.db.rpc("plone27_empresa_cuenta_anadir", { p_bank: bank, p_empresa: empresa, p_iban: String(b?.iban ?? ""), p_actor: actor });
+      return error ? fail(error.message) : Response.json({ ok: true, cip: data });
+    }
+    if (acc === "asegurar_entidad") {
+      const own = await s.db.from("plone27_empresas").select("id").eq("id", empresa).eq("bank_id", bank).maybeSingle();
+      if (!own.data) return fail("Empresa no encontrada en ese banco");
+      const { data, error } = await s.db.rpc("plone27_empresa_asegurar_entidad", { p_empresa: empresa, p_actor: s.id });
+      if (error) return fail(error.message);
+      if (!data) return fail("La empresa no tiene cuentas activas. Añade una cuenta primero.");
+      return Response.json({ ok: true, cip: data });
+    }
+    if (acc === "crear_entidad") {
+      const actor = await personaPorDip(s.db, String(b?.dip_actor ?? ""));
+      const { data, error } = await s.db.rpc("plone27_empresa_crear_entidad", { p_bank: bank, p_empresa: empresa, p_iban: b?.iban ? String(b.iban) : null,
+        p_nombre: b?.nombre ? String(b.nombre) : null, p_actor: actor });
+      return error ? fail(error.message) : Response.json({ ok: true, cip: data });
+    }
     if (acc === "vincular_entidad") {
       const actor = await personaPorDip(s.db, String(b?.dip_actor ?? ""));
       const { error } = await s.db.rpc("plone27_empresa_vincular_entidad", { p_bank: bank, p_empresa: empresa, p_cip: String(b?.cip ?? ""), p_actor: actor });
