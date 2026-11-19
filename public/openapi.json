@@ -2244,7 +2244,8 @@
             "bearerAuth": []
           }
         ],
-        "x-grupo": "Usuario"
+        "x-grupo": "Usuario",
+        "description": "Los bonos caducan a los 3 meses de su emisión si no se canjean."
       }
     },
     "/api/v1/me/rbu/{id}/claim": {
@@ -2309,7 +2310,8 @@
             }
           }
         ],
-        "x-grupo": "Usuario"
+        "x-grupo": "Usuario",
+        "description": "Los bonos caducan a los 3 meses de su emisión si no se canjean."
       }
     },
     "/api/v1/me/plans": {
@@ -4395,7 +4397,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Lo no gastado de una asignación vuelve a la Cuenta de Reserva en su fecha de caducidad. Un cargo consume una sola asignación.",
+        "description": "Lo no gastado de una asignación vuelve a la Cuenta de Reserva en su fecha de caducidad. Un cargo consume una sola asignación. Los bonos caducan a los 3 meses de su emisión si no se canjean.",
         "responses": {
           "200": {
             "description": "OK",
