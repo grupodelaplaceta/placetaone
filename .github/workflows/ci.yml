@@ -1,4 +1,8 @@
 name: ci
+
+# DEV-003 (Art. 24): permisos mínimos por defecto.
+permissions:
+  contents: read
 on: [push, pull_request]
 jobs:
   db:
@@ -6,6 +10,7 @@ jobs:
     services:
       postgres: {image: "postgres:16", env: {POSTGRES_PASSWORD: pg}, ports: ["5432:5432"], options: "--health-cmd pg_isready --health-interval 5s --health-retries 10"}
     steps:
+      # DEV-003: fijar las acciones por SHA (pendiente: requiere resolverlos con acceso a red).
       - uses: actions/checkout@v4
       - run: |
           export PGPASSWORD=pg; P="psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -d postgres"
@@ -13,7 +18,9 @@ jobs:
   app:
     runs-on: ubuntu-latest
     steps:
+      # DEV-003: fijar las acciones por SHA (pendiente: requiere resolverlos con acceso a red).
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: 20}
+      # DEV-001/DEV-002: sustituir 'npm install' por 'npm ci' cuando exista package-lock.json.
       - run: npm install && npx tsc --noEmit
