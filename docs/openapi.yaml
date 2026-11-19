@@ -1,3 +1,4 @@
+# OBSOLETO como contrato: la fuente única es docs/openapi.json (DEV-012). Pendiente de retirada por decisión humana.
 openapi: 3.0.3
 info: {title: Placeta One API v1, version: "1.1", description: "Importes en Pz. Autenticación por x-api-key (por entidad)."}
 paths:
