@@ -5,3 +5,8 @@
 - Decisión: `plone27_rbu_issue_week` fija `expires_on = semana + 3 meses` (migración 0060). Los bonos disponibles existentes se alinean al mismo plazo.
 - Consecuencia que hay que decidir: el saldo canjeado caduca el mismo día que su bono (`lote.expires_on = bono.expires_on`). Un bono canjeado cerca del final del plazo tendrá poco tiempo para gastarse. Opciones: mantenerlo así, o dar un plazo de gasto propio desde el canje (por ejemplo, 30 días). Pendiente de decisión.
 - Verificación: SQL estático y verificación del repositorio en verde. No ejecutado en PostgreSQL.
+
+## Actualización (2026-11-19, migración 0061)
+- Lo canjeado no caduca. El canje ingresa el saldo en la cuenta principal y la tarjeta prepago lo reserva sobre esa misma cuenta: el saldo pertenece al usuario y no vuelve a la Reserva.
+- Solo caducan los bonos sin canjear, a los 3 meses. Esto sustituye a la consecuencia pendiente de la versión anterior de este ADR.
+- Saldos canjeados que ya hubieran caducado con anterioridad y devuelto a la Reserva: no se restituyen automáticamente. Requiere decisión.

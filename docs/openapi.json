@@ -2245,7 +2245,7 @@
           }
         ],
         "x-grupo": "Usuario",
-        "description": "Los bonos caducan a los 3 meses de su emisión si no se canjean."
+        "description": "Los bonos caducan a los 3 meses de su emisión si no se canjean. Una vez canjeado, el saldo no caduca; el campo caduca de un saldo canjeado es 2999-12-31."
       }
     },
     "/api/v1/me/rbu/{id}/claim": {
@@ -2311,7 +2311,7 @@
           }
         ],
         "x-grupo": "Usuario",
-        "description": "Los bonos caducan a los 3 meses de su emisión si no se canjean."
+        "description": "Los bonos caducan a los 3 meses de su emisión si no se canjean. Una vez canjeado, el saldo no caduca; el campo caduca de un saldo canjeado es 2999-12-31."
       }
     },
     "/api/v1/me/plans": {
@@ -4397,7 +4397,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Lo no gastado de una asignación vuelve a la Cuenta de Reserva en su fecha de caducidad. Un cargo consume una sola asignación. Los bonos caducan a los 3 meses de su emisión si no se canjean.",
+        "description": "Lo no gastado de una asignación vuelve a la Cuenta de Reserva en su fecha de caducidad. Un cargo consume una sola asignación. Los bonos caducan a los 3 meses de su emisión si no se canjean. Una vez canjeado, el saldo no caduca; el campo caduca de un saldo canjeado es 2999-12-31.",
         "responses": {
           "200": {
             "description": "OK",
