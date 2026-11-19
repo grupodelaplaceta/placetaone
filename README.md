@@ -75,7 +75,7 @@ Nunca se usan variables `NEXT_PUBLIC_*` para secretos. Algunas variables aceptan
 ## Responsables técnicos y de seguridad
 | Técnico | Identificación DIP | Rol |
 |---|---|---|
-| PENDIENTE | PENDIENTE | Responsable técnico |
+| Mikel Alegre | DIP-23749931M | Responsable técnico |
 | PENDIENTE | PENDIENTE | Responsable de seguridad |
 
 Los responsables se completan con datos reales. No se han inventado nombres ni DIP.
