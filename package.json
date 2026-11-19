@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "verificar": "bash verificacion/ejecutar.sh"
+    "verificar": "bash verificacion/ejecutar.sh",
+    "typecheck": "tsc --noEmit",
+    "test": "bash verificacion/ejecutar.sh"
   },
   "dependencies": {
     "next": "15.1.9",
