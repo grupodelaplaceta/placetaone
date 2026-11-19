@@ -1,4 +1,5 @@
 "use client";
+import { fechaSolo } from "@/lib/fechas";
 import { useEffect, useState } from "react";
 import { Card, Badge } from "../kit";
 import { api } from "@/lib/api";
@@ -61,7 +62,7 @@ export default function LiquidacionAdmin() {
             <table style={{ width: "100%", fontSize: 14 }}>
               <thead><tr><th align="left">Fecha</th><th align="left">Deudor → acreedor</th><th align="right">Importe</th><th align="left">Estado</th><th align="left">Motivo</th><th /></tr></thead>
               <tbody>{datos.liquidaciones.map((l) => (
-                <tr key={l.id}><td>{l.fecha}</td><td>{nombre(l.banco_deudor)} → {nombre(l.banco_acreedor)}</td><td align="right">{l.importe} Pz</td>
+                <tr key={l.id}><td>{fechaSolo(l.fecha)}</td><td>{nombre(l.banco_deudor)} → {nombre(l.banco_acreedor)}</td><td align="right">{l.importe} Pz</td>
                   <td><Badge tono={l.estado === "ejecutada" ? "ok" : "neutral"}>{l.estado}</Badge></td><td>{l.motivo ?? "—"}</td>
                   <td>{l.estado === "ejecutada" && <button className="btn" onClick={() => accion({ accion: "solicitar_reversion", liquidacion: l.id, motivo: f.motivo ?? "" }, "Reversión solicitada. Otra persona debe aprobarla.")}>Pedir reversión</button>}</td></tr>))}</tbody>
             </table>

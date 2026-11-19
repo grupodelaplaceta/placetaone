@@ -1,4 +1,5 @@
 "use client";
+import { fechaSolo } from "@/lib/fechas";
 import { useEffect, useState } from "react";
 import { Card, Badge } from "../kit";
 import { api } from "@/lib/api";
@@ -88,7 +89,7 @@ export default function EmpresasAdmin() {
               <Card titulo="Titulares y cuentas">
                 <table style={{ width: "100%", fontSize: 14 }}>
                   <thead><tr><th align="left">DIP</th><th align="left">Rol</th><th align="left">Desde</th><th align="left">Hasta</th></tr></thead>
-                  <tbody>{det.titulares.map((t, i) => <tr key={i}><td className="mono">{t.dip}</td><td>{t.rol}</td><td>{t.desde}</td><td>{t.hasta ?? "activo"}</td></tr>)}</tbody>
+                  <tbody>{det.titulares.map((t, i) => <tr key={i}><td className="mono">{t.dip}</td><td>{t.rol}</td><td>{fechaSolo(t.desde)}</td><td>{t.hasta ?? "activo"}</td></tr>)}</tbody>
                 </table>
                 <p>Cuentas de la empresa:</p>
                 <ul>{det.cuentas.map((c) => <li key={c.iban} className="mono">{c.iban}</li>)}</ul>

@@ -1,4 +1,5 @@
 "use client";
+import { fechaSolo } from "@/lib/fechas";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { dlg } from "../ui";
@@ -103,7 +104,7 @@ export default function IVA() {
       {visibles.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
         <thead><tr>{["Fecha", "Tipo", "Severidad", "Receptor", "Pagador", "Importe", "IVA estimado", "Estado", "Acciones"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
         <tbody>{visibles.map((h) => (<tr key={h.id}>
-          <td style={td}>{new Date(h.detected_at).toLocaleDateString("es")}</td>
+          <td style={td}>{fechaSolo(h.detected_at)}</td>
           <td style={td}><b>{TIPO[h.kind] ?? h.kind}</b><div style={{ color: "#666", fontSize: 12, maxWidth: 280 }}>{EXPLICA[h.kind]}</div></td>
           <td style={td}>{h.severity}</td>
           <td style={td}>{h.receptor}</td><td style={td}>{h.pagador || "—"}</td>

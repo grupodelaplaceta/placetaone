@@ -1,4 +1,5 @@
 "use client";
+import { fechaSolo } from "@/lib/fechas";
 import { useState } from "react";
 import Link from "next/link";
 import { useApi, Card, Stat, Badge, Loading, Empty, ErrorBox, arr, pz, fecha, type Tono } from "./kit";
@@ -23,7 +24,7 @@ const dentro = (d: number) => new Date(Date.now() + d * 864e5).toISOString().sli
 export default function Panel() {
   const [rango] = useState(() => ({ desde: hoy(), hasta: dentro(7) }));
   const ov = useApi<Over>("/api/admin/overview", {});
-  const pr = useApi<Prev>(`/api/admin/previsiones?desde=${rango.desde}&hasta=${rango.hasta}`, {});
+  const pr = useApi<Prev>(`/api/admin/previsiones?desde=${fechaSolo(rango.desde)}&hasta=${fechaSolo(rango.hasta)}`, {});
 
   const alertas = arr<Alerta>(ov.data.alerts);
   const bancos = arr<Banco>(ov.data.banks);
@@ -62,7 +63,7 @@ export default function Panel() {
           {pr.loading && !pr.data.previsiones ? <Loading /> : previsiones.length === 0 ? <Empty texto="No hay nada programado en los próximos siete días." /> : (
             <ul className="lista">{previsiones.slice(0, 8).map((f, i) => (
               <li key={i}>
-                <span><b>{f.fecha}</b> · {f.tipo}<br /><small className="muted">{f.referencia}</small></span>
+                <span><b>{fechaSolo(f.fecha)}</b> · {f.tipo}<br /><small className="muted">{f.referencia}</small></span>
                 <span>{pz(f.importe)} <Badge tono={TONO[f.estado] ?? "neutral"}>{f.estado}</Badge></span>
               </li>))}</ul>)}
         </Card>

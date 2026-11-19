@@ -1,4 +1,5 @@
 "use client";
+import { fechaHora } from "@/lib/fechas";
 import { useEffect, useState } from "react";
 import { Card, Badge } from "../kit";
 import { api } from "@/lib/api";
@@ -132,7 +133,7 @@ export default function PasarelaAdmin() {
                   <tr key={e.id}>
                     <td>{e.id}</td><td>{e.evento}</td><td className="mono">{e.referencia ?? "—"}</td>
                     <td><Badge tono={e.estado === "sent" ? "ok" : e.estado === "failed" ? "bad" : "neutral"}>{e.estado}</Badge></td>
-                    <td align="right">{e.intentos}</td><td>{new Date(e.creada).toLocaleString("es-ES")}</td>
+                    <td align="right">{e.intentos}</td><td>{fechaHora(e.creada)}</td>
                     <td>{e.estado === "failed" && <button className="btn" onClick={() => accion({ accion: "entrega_reintentar", id: e.id }, "Reintento programado.")}>Reintentar</button>}</td>
                   </tr>
                 ))}

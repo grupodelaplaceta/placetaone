@@ -1,4 +1,5 @@
 "use client";
+import { fechaSolo } from "@/lib/fechas";
 import { useEffect, useState } from "react";
 import { Card, Badge } from "../kit";
 import { api } from "@/lib/api";
@@ -127,7 +128,7 @@ export default function Institucional() {
                   <tbody>
                     {datos.gastos.map((g) => (
                       <tr key={g.id}>
-                        <td>{g.fecha}</td><td>{nombreUnidad(g.unidad)}</td><td>{g.concepto}</td>
+                        <td>{fechaSolo(g.fecha)}</td><td>{nombreUnidad(g.unidad)}</td><td>{g.concepto}</td>
                         <td align="right">{Number(g.importe).toLocaleString("es-ES")}</td><td>{g.origen}</td>
                         <td><Badge tono={g.estado === "pagado" ? "ok" : g.estado === "rechazado" ? "bad" : "neutral"}>{g.estado}</Badge></td>
                         <td>
@@ -190,7 +191,7 @@ export default function Institucional() {
                   <thead><tr><th align="left">Fecha</th><th align="left">Concepto</th><th align="left">Unidad</th><th align="right">Importe</th></tr></thead>
                   <tbody>
                     {datos.gastos.filter((g) => g.origen === "retribucion").map((g) => (
-                      <tr key={g.id}><td>{g.fecha}</td><td>{g.concepto}</td><td>{nombreUnidad(g.unidad)}</td><td align="right">{Number(g.importe).toLocaleString("es-ES")}</td></tr>
+                      <tr key={g.id}><td>{fechaSolo(g.fecha)}</td><td>{g.concepto}</td><td>{nombreUnidad(g.unidad)}</td><td align="right">{Number(g.importe).toLocaleString("es-ES")}</td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -228,7 +229,7 @@ export default function Institucional() {
           {tab === "Convocatorias y solicitudes" && (
             <>
               <Card titulo="Convocatorias internas">
-                <ul>{datos.convocatorias.map((c) => <li key={c.id}>{c.nombre} · {Number(c.importe).toLocaleString("es-ES")} Pz · {c.desde} → {c.hasta} · {c.estado}</li>)}</ul>
+                <ul>{datos.convocatorias.map((c) => <li key={c.id}>{c.nombre} · {Number(c.importe).toLocaleString("es-ES")} Pz · {fechaSolo(c.desde)} → {fechaSolo(c.hasta)} · {c.estado}</li>)}</ul>
                 <input style={campo} placeholder="Nombre" value={f.cn ?? ""} onChange={(e) => set("cn", e.target.value)} />
                 <input style={{ ...campo, width: 140 }} type="number" placeholder="Importe Pz" value={f.ci ?? ""} onChange={(e) => set("ci", e.target.value)} />
                 <input style={campo} type="date" value={f.cd ?? ""} onChange={(e) => set("cd", e.target.value)} />

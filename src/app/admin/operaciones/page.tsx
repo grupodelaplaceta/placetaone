@@ -1,4 +1,5 @@
 "use client";
+import { fechaHora } from "@/lib/fechas";
 import { useEffect, useState } from "react";
 import { Card, Badge } from "../kit";
 import { api } from "@/lib/api";
@@ -63,7 +64,7 @@ export default function OperacionesAdmin() {
               <tr key={String(p.id)}>
                 <td className="mono">{String(p.client_ref)}</td><td>{String(p.estado)}</td><td align="right">{Number(p.importe).toFixed(2)} Pz</td>
                 <td align="right">{Number(p.comision).toFixed(2)} Pz</td><td>{String(p.medio)}</td><td>{p.interbancaria ? "sí" : "no"}</td>
-                <td>{new Date(String(p.creada)).toLocaleString("es-ES")}</td>
+                <td>{fechaHora(p.creada)}</td>
               </tr>))}</tbody>
           </table>
         </Card>

@@ -1,3 +1,4 @@
+import { fechaHora } from "@/lib/fechas";
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
@@ -9,7 +10,7 @@ export const pz = (n: number | string | null | undefined) => {
   const v = Number(n);
   return n == null || Number.isNaN(v) ? "—" : `${v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Pz`;
 };
-export const fecha = (s?: string | null) => (s ? new Date(s).toLocaleString("es", { dateStyle: "short", timeStyle: "short" }) : "—");
+export const fecha = fechaHora;
 
 // Carga datos de la API con estados de cargando, error y reintento. Cancela la actualización si la pantalla ya no existe.
 export function useApi<T extends object>(path: string | null, inicial: T) {

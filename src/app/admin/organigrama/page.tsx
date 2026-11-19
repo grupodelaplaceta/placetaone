@@ -1,4 +1,5 @@
 "use client";
+import { fechaSolo } from "@/lib/fechas";
 import { useState } from "react";
 import { useApi, Card, Badge, Loading, ErrorBox } from "../kit";
 import { api } from "@/lib/api";
@@ -90,7 +91,7 @@ export default function Organigrama() {
           <tbody>
             {(data.nombramientos ?? []).map((n) => (
               <tr key={n.id}>
-                <td className="mono">{n.persona.slice(0, 8)}</td><td>{nombrePuesto(n.puesto)}</td><td>{n.desde}</td><td>{n.hasta ?? "vigente"}</td>
+                <td className="mono">{n.persona.slice(0, 8)}</td><td>{nombrePuesto(n.puesto)}</td><td>{fechaSolo(n.desde)}</td><td>{n.hasta ?? "vigente"}</td>
                 <td>{!n.hasta && <button className="btn" onClick={() => enviar({ accion: "cesar", nombramiento: n.id, motivo: "Cese registrado desde el panel" })}>Cesar</button>}</td>
               </tr>
             ))}
