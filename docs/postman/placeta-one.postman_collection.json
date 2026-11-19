@@ -1,0 +1,2664 @@
+{
+  "info": {
+    "name": "Placeta One · API para bancos",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Colección generada desde docs/openapi.json. Define las variables base, clave (solo servidor), token (solo usuario), iban, ref, id y dip."
+  },
+  "variable": [
+    {
+      "key": "base",
+      "value": "https://api.placeta.example"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "clave",
+      "value": ""
+    },
+    {
+      "key": "iban",
+      "value": "PZ-0001-0002"
+    },
+    {
+      "key": "ref",
+      "value": "REC-2026-000123"
+    },
+    {
+      "key": "id",
+      "value": ""
+    },
+    {
+      "key": "dip",
+      "value": "12345678Z"
+    }
+  ],
+  "item": [
+    {
+      "name": "Servidor del banco",
+      "description": "Llamadas del backend. Requieren la clave y, para crear sesiones, la firma HMAC (ver guías).",
+      "item": [
+        {
+          "name": "Vincular un usuario (DIP) a una cuenta de la entidad",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/bk/link-account",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bk",
+                "link-account"
+              ],
+              "query": []
+            },
+            "description": "Vincular un usuario (DIP) a una cuenta de la entidad\n\nPermiso: usuarios:gestionar",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dip\": \"12345678Z\",\n  \"iban\": \"PZ-0001-0002\",\n  \"rol\": \"holder\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/bk/link-account",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bk",
+                    "link-account"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"vinculado\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Buscar por DIP las cuentas de la entidad",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/bk/personas?dip=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bk",
+                "personas"
+              ],
+              "query": [
+                {
+                  "key": "dip",
+                  "value": "",
+                  "description": "DIP a buscar"
+                }
+              ]
+            },
+            "description": "Buscar por DIP las cuentas de la entidad\n\nPermiso: personas:buscar"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/bk/personas?dip=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bk",
+                    "personas"
+                  ],
+                  "query": [
+                    {
+                      "key": "dip",
+                      "value": "",
+                      "description": "DIP a buscar"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"cuentas\": [\n    {\n      \"iban\": \"PZ-0001-0002\",\n      \"nombre\": \"Cuenta corriente\",\n      \"tipo\": \"personal\",\n      \"rol\": \"holder\",\n      \"estado\": \"active\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crear sesión de usuario (firmada)",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/sessions",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sessions"
+              ],
+              "query": []
+            },
+            "description": "Crear sesión de usuario (firmada)\n\nPermiso: sesiones:crear",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dip\": \"12345678Z\",\n  \"minutos\": 15,\n  \"permisos\": [\n    \"me:read\",\n    \"me:transfer\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/sessions",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "sessions"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"token\": \"pus_…\",\n  \"expira\": \"2026-11-03T09:15:00Z\",\n  \"permisos\": [\n    \"me:read\",\n    \"me:transfer\"\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ficha de una cuenta de la entidad",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts/{{iban}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{{iban}}"
+              ],
+              "query": []
+            },
+            "description": "Ficha de una cuenta de la entidad\n\nPermiso: accounts:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts/{{iban}}",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts",
+                    "{{iban}}"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"iban\": \"PZ-0001-0002\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crear una cuenta",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts"
+              ],
+              "query": []
+            },
+            "description": "Crear una cuenta\n\nPermiso: accounts:write",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cuenta\",\n  \"owner\": \"…\",\n  \"product_id\": \"…\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"id\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Movimientos de una cuenta de la entidad",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts/{{iban}}/transactions",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{{iban}}",
+                "transactions"
+              ],
+              "query": []
+            },
+            "description": "Movimientos de una cuenta de la entidad\n\nPermiso: accounts:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts/{{iban}}/transactions",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts",
+                    "{{iban}}",
+                    "transactions"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"movimientos\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Recibos de una cuenta de la entidad",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts/{{iban}}/receipts",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{{iban}}",
+                "receipts"
+              ],
+              "query": []
+            },
+            "description": "Recibos de una cuenta de la entidad\n\nPermiso: accounts:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts/{{iban}}/receipts",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts",
+                    "{{iban}}",
+                    "receipts"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"recibos\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Tarjetas de una cuenta",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts/{{iban}}/cards",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{{iban}}",
+                "cards"
+              ],
+              "query": []
+            },
+            "description": "Tarjetas de una cuenta\n\nPermiso: cards:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts/{{iban}}/cards",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts",
+                    "{{iban}}",
+                    "cards"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"tarjetas\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Estado de la membresía",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts/{{iban}}/membership",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{{iban}}",
+                "membership"
+              ],
+              "query": []
+            },
+            "description": "Estado de la membresía\n\nPermiso: memberships:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts/{{iban}}/membership",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts",
+                    "{{iban}}",
+                    "membership"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"estado\": \"active\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Renovar la membresía",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/accounts/{{iban}}/membership/renew",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{{iban}}",
+                "membership",
+                "renew"
+              ],
+              "query": []
+            },
+            "description": "Renovar la membresía\n\nPermiso: memberships:write",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"…\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/accounts/{{iban}}/membership/renew",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "accounts",
+                    "{{iban}}",
+                    "membership",
+                    "renew"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"renovada\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Transferencia entre cuentas de la entidad",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/transfers",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transfers"
+              ],
+              "query": []
+            },
+            "description": "Transferencia entre cuentas de la entidad\n\nPermiso: transfers:write",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_iban\": \"PZ-0001-0002\",\n  \"to_iban\": \"PZ-0001-0009\",\n  \"amount\": 50,\n  \"memo\": \"Cena\",\n  \"user_id\": \"…\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/transfers",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transfers"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"transfer\": \"…\",\n  \"operation\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Estado de una transferencia",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/transfers/{{ref}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transfers",
+                "{{ref}}"
+              ],
+              "query": []
+            },
+            "description": "Estado de una transferencia\n\nPermiso: transfers:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/transfers/{{ref}}",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transfers",
+                    "{{ref}}"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ref\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Productos de la entidad",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/products",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "products"
+              ],
+              "query": []
+            },
+            "description": "Productos de la entidad\n\nPermiso: products:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/products",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "products"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"productos\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Listar los orígenes de navegador de tu cliente",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/bk/origenes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bk",
+                "origenes"
+              ],
+              "query": []
+            },
+            "description": "Listar los orígenes de navegador de tu cliente\n\nPermiso: origenes:gestionar"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/bk/origenes",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bk",
+                    "origenes"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"origenes\": [\n    {\n      \"origin\": \"https://app.tubanco.es\",\n      \"estado\": \"aprobado\",\n      \"entorno\": \"produccion\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Solicitar un origen (queda pendiente de aprobación)",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/bk/origenes",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bk",
+                "origenes"
+              ],
+              "query": []
+            },
+            "description": "Solicitar un origen (queda pendiente de aprobación)\n\nPermiso: origenes:gestionar",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origen\": \"https://app.tubanco.es\",\n  \"entorno\": \"produccion\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/bk/origenes",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bk",
+                    "origenes"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"origen\": \"https://app.tubanco.es\",\n  \"estado\": \"pendiente\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Retirar un origen",
+          "request": {
+            "method": "delete",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{clave}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/bk/origenes?origen=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bk",
+                "origenes"
+              ],
+              "query": [
+                {
+                  "key": "origen",
+                  "value": "",
+                  "description": "Origen a retirar"
+                }
+              ]
+            },
+            "description": "Retirar un origen\n\nPermiso: origenes:gestionar"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "delete",
+                "url": {
+                  "raw": "{{base}}/api/v1/bk/origenes?origen=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "bk",
+                    "origenes"
+                  ],
+                  "query": [
+                    {
+                      "key": "origen",
+                      "value": "",
+                      "description": "Origen a retirar"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"retirado\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Usuario (web y app)",
+      "description": "Llamadas con el token de sesión pus_…",
+      "item": [
+        {
+          "name": "Cerrar la sesión actual",
+          "request": {
+            "method": "delete",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/sessions",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "sessions"
+              ],
+              "query": []
+            },
+            "description": "Cerrar la sesión actual\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "delete",
+                "url": {
+                  "raw": "{{base}}/api/v1/sessions",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "sessions"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"revocada\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Datos de la sesión: entidad y permisos",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me"
+              ],
+              "query": []
+            },
+            "description": "Datos de la sesión: entidad y permisos\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"banco\": {\n    \"codigo\": \"0001\",\n    \"nombre\": \"Mi Banco\"\n  },\n  \"permisos\": [\n    \"me:read\"\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mis cuentas",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts"
+              ],
+              "query": []
+            },
+            "description": "Mis cuentas\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"cuentas\": [\n    {\n      \"iban\": \"PZ-0001-0002\",\n      \"nombre\": \"Cuenta corriente\",\n      \"tipo\": \"personal\",\n      \"rol\": \"holder\",\n      \"saldo\": 1520.4,\n      \"disponible\": 1500.4\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Abrir una cuenta personal propia (máximo 3 por entidad)",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Una clave por acción del usuario; reutilízala en los reintentos"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts"
+              ],
+              "query": []
+            },
+            "description": "Abrir una cuenta personal propia (máximo 3 por entidad)\n\nPermiso: me:contratar",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Cuenta de ahorro\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"cuenta\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ficha de una cuenta propia",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts/{{iban}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts",
+                "{{iban}}"
+              ],
+              "query": []
+            },
+            "description": "Ficha de una cuenta propia\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts/{{iban}}",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts",
+                    "{{iban}}"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"iban\": \"PZ-0001-0002\",\n  \"saldo\": 1520.4,\n  \"reservado\": 20,\n  \"disponible\": 1500.4,\n  \"limite_diario\": 3000,\n  \"descubierto\": false\n}"
+            }
+          ]
+        },
+        {
+          "name": "Movimientos (paginados por cursor)",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts/{{iban}}/transactions?antes=&limite=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts",
+                "{{iban}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "antes",
+                  "value": "",
+                  "description": "Cursor: siguiente de la página anterior"
+                },
+                {
+                  "key": "limite",
+                  "value": "",
+                  "description": "Máximo 100"
+                }
+              ]
+            },
+            "description": "Movimientos (paginados por cursor)\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts/{{iban}}/transactions?antes=&limite=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts",
+                    "{{iban}}",
+                    "transactions"
+                  ],
+                  "query": [
+                    {
+                      "key": "antes",
+                      "value": "",
+                      "description": "Cursor: siguiente de la página anterior"
+                    },
+                    {
+                      "key": "limite",
+                      "value": "",
+                      "description": "Máximo 100"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"movimientos\": [],\n  \"siguiente\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Extracto del periodo: saldo inicial, movimientos y saldo final",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts/{{iban}}/statement?desde=&hasta=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts",
+                "{{iban}}",
+                "statement"
+              ],
+              "query": [
+                {
+                  "key": "desde",
+                  "value": "",
+                  "description": "AAAA-MM-DD"
+                },
+                {
+                  "key": "hasta",
+                  "value": "",
+                  "description": "AAAA-MM-DD"
+                }
+              ]
+            },
+            "description": "Extracto del periodo: saldo inicial, movimientos y saldo final\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts/{{iban}}/statement?desde=&hasta=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts",
+                    "{{iban}}",
+                    "statement"
+                  ],
+                  "query": [
+                    {
+                      "key": "desde",
+                      "value": "",
+                      "description": "AAAA-MM-DD"
+                    },
+                    {
+                      "key": "hasta",
+                      "value": "",
+                      "description": "AAAA-MM-DD"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"saldo_inicial\": 0,\n  \"movimientos\": [],\n  \"saldo_final\": 0\n}"
+            }
+          ]
+        },
+        {
+          "name": "Recibos fiscales de una cuenta propia",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts/{{iban}}/receipts",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts",
+                "{{iban}}",
+                "receipts"
+              ],
+              "query": []
+            },
+            "description": "Recibos fiscales de una cuenta propia\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts/{{iban}}/receipts",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts",
+                    "{{iban}}",
+                    "receipts"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"recibos\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Tarjetas de una cuenta propia (sin número completo)",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/accounts/{{iban}}/cards",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "accounts",
+                "{{iban}}",
+                "cards"
+              ],
+              "query": []
+            },
+            "description": "Tarjetas de una cuenta propia (sin número completo)\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/accounts/{{iban}}/cards",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "accounts",
+                    "{{iban}}",
+                    "cards"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"tarjetas\": [\n    {\n      \"ref\": \"…\",\n      \"tipo\": \"digital\",\n      \"ultimos4\": \"1234\",\n      \"estado\": \"active\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Certificado de cálculo de un recibo propio",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/receipts/{{ref}}/certificate",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "receipts",
+                "{{ref}}",
+                "certificate"
+              ],
+              "query": []
+            },
+            "description": "Certificado de cálculo de un recibo propio\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/receipts/{{ref}}/certificate",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "receipts",
+                    "{{ref}}",
+                    "certificate"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"norma\": \"IVA\",\n  \"base\": 1000,\n  \"importe\": 120,\n  \"hash\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Comprobar un IBAN antes de transferir",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/lookup?iban=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "lookup"
+              ],
+              "query": [
+                {
+                  "key": "iban",
+                  "value": "",
+                  "description": "IBAN"
+                }
+              ]
+            },
+            "description": "Comprobar un IBAN antes de transferir\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/lookup?iban=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "lookup"
+                  ],
+                  "query": [
+                    {
+                      "key": "iban",
+                      "value": "",
+                      "description": "IBAN"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"existe\": true,\n  \"entidad\": \"0001\",\n  \"titular\": \"Ma***\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Transferir dinero desde una cuenta propia",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Una clave por acción del usuario; reutilízala en los reintentos"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/transfers",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "transfers"
+              ],
+              "query": []
+            },
+            "description": "Transferir dinero desde una cuenta propia\n\nPermiso: me:transfer",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"desde_iban\": \"PZ-0001-0002\",\n  \"hacia_iban\": \"PZ-0001-0009\",\n  \"importe\": 50,\n  \"concepto\": \"Cena\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/transfers",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "transfers"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"transaccion\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Transferencias programadas activas",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/transfers/scheduled",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "transfers",
+                "scheduled"
+              ],
+              "query": []
+            },
+            "description": "Transferencias programadas activas\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/transfers/scheduled",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "transfers",
+                    "scheduled"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"programadas\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Programar una transferencia (única o periódica)",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Una clave por acción del usuario; reutilízala en los reintentos"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/transfers/scheduled",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "transfers",
+                "scheduled"
+              ],
+              "query": []
+            },
+            "description": "Programar una transferencia (única o periódica)\n\nPermiso: me:transfer",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"desde_iban\": \"PZ-0001-0002\",\n  \"hacia_iban\": \"PZ-0001-0009\",\n  \"importe\": 200,\n  \"fecha\": \"2026-11-01T09:00:00Z\",\n  \"periodicidad_dias\": 30,\n  \"concepto\": \"Alquiler\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/transfers/scheduled",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "transfers",
+                    "scheduled"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"programada\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancelar una transferencia programada",
+          "request": {
+            "method": "delete",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/transfers/scheduled/{{id}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "transfers",
+                "scheduled",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Cancelar una transferencia programada\n\nPermiso: me:transfer"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "delete",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/transfers/scheduled/{{id}}",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "transfers",
+                    "scheduled",
+                    "{{id}}"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"cancelada\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Beneficiarios guardados",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/beneficiaries",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "beneficiaries"
+              ],
+              "query": []
+            },
+            "description": "Beneficiarios guardados\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/beneficiaries",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "beneficiaries"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"beneficiarios\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Guardar un beneficiario",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Una clave por acción del usuario; reutilízala en los reintentos"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/beneficiaries",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "beneficiaries"
+              ],
+              "query": []
+            },
+            "description": "Guardar un beneficiario\n\nPermiso: me:transfer",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alias\": \"Casa de mamá\",\n  \"iban\": \"PZ-0001-0009\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/beneficiaries",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "beneficiaries"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"beneficiario\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Borrar un beneficiario",
+          "request": {
+            "method": "delete",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/beneficiaries/{{id}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "beneficiaries",
+                "{{id}}"
+              ],
+              "query": []
+            },
+            "description": "Borrar un beneficiario\n\nPermiso: me:transfer"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "delete",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/beneficiaries/{{id}}",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "beneficiaries",
+                    "{{id}}"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"borrado\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Suspender o reactivar una tarjeta propia",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/cards/{{ref}}",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "cards",
+                "{{ref}}"
+              ],
+              "query": []
+            },
+            "description": "Suspender o reactivar una tarjeta propia\n\nPermiso: me:seguridad",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"suspended\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/cards/{{ref}}",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "cards",
+                    "{{ref}}"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"estado\": \"suspended\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Notificaciones (ingresos y cargos)",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/notifications?solo_nuevas=&limite=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "solo_nuevas",
+                  "value": "",
+                  "description": "1 para solo no leídas"
+                },
+                {
+                  "key": "limite",
+                  "value": "",
+                  "description": "Máximo 200"
+                }
+              ]
+            },
+            "description": "Notificaciones (ingresos y cargos)\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/notifications?solo_nuevas=&limite=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "notifications"
+                  ],
+                  "query": [
+                    {
+                      "key": "solo_nuevas",
+                      "value": "",
+                      "description": "1 para solo no leídas"
+                    },
+                    {
+                      "key": "limite",
+                      "value": "",
+                      "description": "Máximo 200"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"notificaciones\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Marcar notificaciones como leídas",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/notifications/read",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "notifications",
+                "read"
+              ],
+              "query": []
+            },
+            "description": "Marcar notificaciones como leídas\n\nPermiso: me:read",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [\n    9001,\n    9002\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/notifications/read",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "notifications",
+                    "read"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"marcadas\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mis próximos movimientos (máximo 366 días)",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/previsiones?desde=&hasta=",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "previsiones"
+              ],
+              "query": [
+                {
+                  "key": "desde",
+                  "value": "",
+                  "description": "AAAA-MM-DD"
+                },
+                {
+                  "key": "hasta",
+                  "value": "",
+                  "description": "AAAA-MM-DD"
+                }
+              ]
+            },
+            "description": "Mis próximos movimientos (máximo 366 días)\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/previsiones?desde=&hasta=",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "previsiones"
+                  ],
+                  "query": [
+                    {
+                      "key": "desde",
+                      "value": "",
+                      "description": "AAAA-MM-DD"
+                    },
+                    {
+                      "key": "hasta",
+                      "value": "",
+                      "description": "AAAA-MM-DD"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"previsiones\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mis bonos de la RBU",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/rbu",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "rbu"
+              ],
+              "query": []
+            },
+            "description": "Mis bonos de la RBU\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/rbu",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "rbu"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"bonos\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reclamar un bono de la RBU",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Una clave por acción del usuario; reutilízala en los reintentos"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/rbu/{{id}}/claim",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "rbu",
+                "{{id}}",
+                "claim"
+              ],
+              "query": []
+            },
+            "description": "Reclamar un bono de la RBU\n\nPermiso: me:transfer"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/rbu/{{id}}/claim",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "rbu",
+                    "{{id}}",
+                    "claim"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"transaccion\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mis planes a plazos y suscripciones",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/plans",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "plans"
+              ],
+              "query": []
+            },
+            "description": "Mis planes a plazos y suscripciones\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/plans",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "plans"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"planes\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mis solicitudes (préstamo o cuenta)",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/requests",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "requests"
+              ],
+              "query": []
+            },
+            "description": "Mis solicitudes (préstamo o cuenta)\n\nPermiso: me:contratar"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/requests",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "requests"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"solicitudes\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Solicitar un préstamo o una cuenta (queda pendiente)",
+          "request": {
+            "method": "post",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Una clave por acción del usuario; reutilízala en los reintentos"
+              },
+              {
+                "key": "content-type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/requests",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "requests"
+              ],
+              "query": []
+            },
+            "description": "Solicitar un préstamo o una cuenta (queda pendiente)\n\nPermiso: me:contratar",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"prestamo\",\n  \"importe\": 3000,\n  \"cuotas\": 12,\n  \"motivo\": \"Reforma\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "post",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/requests",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "requests"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"solicitud\": \"…\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mis sesiones abiertas (sin tokens)",
+          "request": {
+            "method": "get",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/sessions",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "sessions"
+              ],
+              "query": []
+            },
+            "description": "Mis sesiones abiertas (sin tokens)\n\nPermiso: me:read"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "get",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/sessions",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "sessions"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"sesiones\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cerrar todas mis sesiones excepto la actual",
+          "request": {
+            "method": "delete",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base}}/api/v1/me/sessions",
+              "host": [
+                "{{base}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "sessions"
+              ],
+              "query": []
+            },
+            "description": "Cerrar todas mis sesiones excepto la actual\n\nPermiso: me:seguridad"
+          },
+          "response": [
+            {
+              "name": "Ejemplo",
+              "originalRequest": {
+                "method": "delete",
+                "url": {
+                  "raw": "{{base}}/api/v1/me/sessions",
+                  "host": [
+                    "{{base}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "me",
+                    "sessions"
+                  ],
+                  "query": []
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"cerradas\": 1\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

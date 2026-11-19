@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@/*": [
+        "../src/*"
+      ]
+    },
+    "resolveJsonModule": true
+  },
+  "include": [
+    "../src/**/*.ts",
+    "../sdk/*.ts",
+    "tipos/entorno.d.ts"
+  ],
+  "exclude": []
+}
