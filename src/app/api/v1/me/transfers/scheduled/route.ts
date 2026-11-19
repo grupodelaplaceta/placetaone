@@ -23,8 +23,12 @@ export async function POST(req: Request) {
   try { b = await req.json(); } catch { return respuesta(req, { error: "JSON no válido" }, 400, s.cliente); }
   const importe = Number(b.importe);
   if (!Number.isFinite(importe) || importe <= 0) return respuesta(req, { error: "importe debe ser mayor que cero" }, 400, s.cliente);
-  const fecha = new Date(String(b.fecha ?? ""));
-  if (Number.isNaN(fecha.getTime())) return respuesta(req, { error: "fecha no válida (ISO 8601)" }, 400, s.cliente);
+  const fechaTxt = String(b.fecha ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/.test(fechaTxt)) return respuesta(req, { error: "fecha debe ser ISO 8601 (AAAA-MM-DD o AAAA-MM-DDTHH:MM)" }, 400, s.cliente);
+  const fecha = new Date(fechaTxt);
+  if (Number.isNaN(fecha.getTime())) return respuesta(req, { error: "fecha no válida" }, 400, s.cliente);
+  if (fecha.getTime() < Date.now() - 86400000) return respuesta(req, { error: "fecha en el pasado" }, 400, s.cliente);
+  if (fecha.getUTCFullYear() > new Date().getUTCFullYear() + 5) return respuesta(req, { error: "fecha demasiado lejana (máximo 5 años)" }, 400, s.cliente);
   const dias = b.periodicidad_dias === undefined || b.periodicidad_dias === null ? 0 : Number(b.periodicidad_dias);
   if (!Number.isInteger(dias) || dias < 0 || dias > 366) return respuesta(req, { error: "periodicidad_dias entre 0 y 366" }, 400, s.cliente);
   const { data, error } = await s.db.rpc("plone27_user_scheduled_create", {
