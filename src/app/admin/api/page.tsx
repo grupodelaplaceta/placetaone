@@ -26,7 +26,7 @@ export default function ApiAdmin() {
       </section>
       <section style={box}>
         <h2>Todos los endpoints y ejemplos</h2>
-        <p>Lista completa con ejemplos de petición y de respuesta. La misma documentación pública está en <a href="/docs/api" target="_blank" rel="noreferrer">/docs/api</a>.</p>
+        <p>Lista completa con ejemplos de petición y de respuesta. La misma documentación pública está en <a href="/docs/api" target="_blank" rel="noopener noreferrer">/docs/api</a>.</p>
         <ExploradorApi />
       </section>
       <section style={box}>
