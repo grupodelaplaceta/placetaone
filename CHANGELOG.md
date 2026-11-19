@@ -16,5 +16,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 - Fechas con formato único y año completo. Vacías, no válidas o anteriores a 2000 se muestran como «—»; 2999 se muestra como «sin caducidad».
 - Las transferencias programadas rechazan fechas no ISO, en el pasado o a más de 5 años.
 
+### Añadido
+- Aprobación automática de productos: un producto marcado se activa al guardarlo, con registro de quién lo configuró (migración 0062).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
