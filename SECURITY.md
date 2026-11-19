@@ -1,7 +1,7 @@
 # Política de seguridad
 
 ## Cómo notificar una vulnerabilidad
-Envíe un informe privado a: **PENDIENTE: contacto institucional de seguridad** (o mediante el aviso de seguridad privado del repositorio). No publique detalles ni abra incidencias públicas.
+Envíe un informe privado al responsable de seguridad, **Mikel Alegre (DIP-23749931M)**, mediante el aviso de seguridad privado del repositorio. Pendiente: correo institucional de seguridad. No publique detalles ni abra incidencias públicas.
 Incluya: descripción, pasos para reproducirla, impacto y versión afectada.
 
 ## Compromisos

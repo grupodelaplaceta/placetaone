@@ -1,0 +1,14 @@
+# Propietarios de revisión (Art. 24 y 55 del Manual DEVAI).
+# Responsable técnico y de seguridad: Mikel Alegre (DIP-23749931M), usuario @malegre-gdlp.
+# Pendiente de confirmar: @grupodelaplaceta es una organización (GitHub solo acepta equipos como propietarios)
+# y @gdelaplaceta no se ha identificado. No añadir sin confirmación.
+
+* @malegre-gdlp
+
+# Rutas sensibles: seguridad, base de datos, API, CI y verificación
+/src/app/api/ @malegre-gdlp
+/src/lib/ @malegre-gdlp
+/supabase/ @malegre-gdlp
+/.github/ @malegre-gdlp
+/verificacion/ @malegre-gdlp
+/SECURITY.md @malegre-gdlp
