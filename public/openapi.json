@@ -7869,6 +7869,59 @@
           }
         ]
       }
+    },
+    "/api/v1/bk/convocatorias/{id}/reautorizacion": {
+      "post": {
+        "summary": "Decidir si lo recuperado de una deuda se vuelve a autorizar en la convocatoria",
+        "description": "Si está activo, lo que se cobre de una deuda por reversión vuelve a quedar autorizado para el programa, siempre que la subvención siga activa, sin caducar y la convocatoria esté abierta. Si no, el dinero se recupera sin reserva.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la convocatoria",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "reautoriza_recuperados": true,
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Actualizado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Convocatoria fuera de tu entidad"
+          },
+          "422": {
+            "description": "Sin permiso"
+          }
+        }
+      }
     }
   },
   "x-webhooks": {

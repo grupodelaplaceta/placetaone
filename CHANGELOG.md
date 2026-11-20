@@ -36,5 +36,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 - Revertir un abono sin saldo ya no deja saldo negativo: lo disponible vuelve y el resto queda como deuda (migración 0064).
 - La doble firma no admite excepciones: se retira la excepción de la Junta en ajustes y publicación fiscal.
 
+### Añadido
+- Lo recuperado de una deuda por reversión se vuelve a autorizar según la convocatoria (migración 0065).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

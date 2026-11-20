@@ -18,3 +18,8 @@
 - Revertir un abono sin saldo suficiente: lo disponible vuelve al programa y el resto queda como deuda del beneficiario frente al subvencionante.
 - La deuda cobrada después no vuelve a autorizarse automáticamente: el programa la recupera sin reserva. Decidir si debe reautorizarse.
 - Se retira la excepción de la Junta a la doble firma en ajustes y publicación fiscal.
+
+## Actualización (migración 0065)
+- Lo recuperado de una deuda por reversión se vuelve a autorizar para el programa al cobrarse, si la subvención sigue activa, no ha caducado, y la convocatoria está abierta y tiene activada la opción «reautorizar recuperados». Si no, se recupera sin reserva y queda en la auditoría.
+- La reautorización se hace al cerrar la transacción de cobro (disparador diferido), cuando el dinero ya está en el programa.
+- Cada convocatoria decide la opción (admin o API de banca).
