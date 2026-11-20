@@ -4,7 +4,7 @@ export type Informe = {
   concedido: number; aprobado: number; pagado: number; pendiente_de_pago: number;
   estado: string; caduca: string | null;
   justificaciones: { id: string; factura: string | null; importe: number; estado: string; transferencia: string | null }[];
-  reversiones: { importe: number; motivo: string; fecha: string }[];
+  reversiones: { importe: number; devuelto: number; deuda: number; motivo: string; fecha: string }[];
   generado: string;
 };
 
@@ -26,7 +26,7 @@ export function lineasInforme(i: Informe): string[] {
   if (i.justificaciones.length > 20) l.push(`... y ${i.justificaciones.length - 20} mas (ver JSON)`);
   if (i.justificaciones.length === 0) l.push("Ninguna justificacion registrada.");
   l.push("", "ABONOS REVERTIDOS");
-  i.reversiones.slice(0, 10).forEach((r) => l.push(`- ${eur(r.importe)}   ${r.motivo}`));
+  i.reversiones.slice(0, 10).forEach((r) => l.push(`- ${eur(r.importe)}   devuelto ${eur(r.devuelto)}   deuda ${eur(r.deuda)}   ${r.motivo}`));
   if (i.reversiones.length === 0) l.push("Ninguno.");
   l.push("", `Generado: ${i.generado}`);
   return l;

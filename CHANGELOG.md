@@ -31,7 +31,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 - Subvenciones y bonos con fondos autorizados: el importe se reserva al crearse; caducidad por convocatoria; caducidad diaria que libera la reserva.
 - Reversión de abonos por el subvencionante o la Junta, con motivo y auditoría.
 - Informe de justificación en JSON y PDF (admin y API de banca).
-- La Junta puede aprobar sus propios cambios de ajustes y publicar versiones fiscales que redacta (ADR-003).
+
+### Corregido
+- Revertir un abono sin saldo ya no deja saldo negativo: lo disponible vuelve y el resto queda como deuda (migración 0064).
+- La doble firma no admite excepciones: se retira la excepción de la Junta en ajustes y publicación fiscal.
 
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

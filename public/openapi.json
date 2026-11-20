@@ -7764,7 +7764,7 @@
     "/api/v1/bk/subvenciones/{id}/revertir": {
       "post": {
         "summary": "Revertir un abono o toda la subvención",
-        "description": "El subvencionante anula un abono (con justificacion) o la subvención completa. Revierte el reembolso con asiento contrario, rechaza la justificación y devuelve la autorización. Requiere permiso de ejecutar en la entidad.",
+        "description": "El subvencionante anula un abono (con justificacion) o la subvención completa. Si el beneficiario tiene saldo, se revierte el reembolso con asiento contrario. Si no tiene saldo suficiente, se devuelve lo disponible y el resto queda como deuda que se cobra automáticamente. La justificación queda rechazada. Requiere permiso de ejecutar en la entidad.",
         "x-permiso": "subvenciones:gestionar",
         "x-grupo": "Subvenciones y reglas",
         "security": [
@@ -7778,8 +7778,9 @@
             "content": {
               "application/json": {
                 "example": {
-                  "revertido": 120,
                   "abonos": 1,
+                  "devuelto": 80,
+                  "deuda": 40,
                   "estado": "activa"
                 }
               }
