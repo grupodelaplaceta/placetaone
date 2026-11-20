@@ -27,5 +27,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 - Las versiones fiscales se publican con la regla de aprobador distinto del autor (antes se publicaban sin esa comprobación desde el panel).
 - Eliminado el método «por tramos», que la base de datos no admite.
 
+### Añadido
+- Subvenciones y bonos con fondos autorizados: el importe se reserva al crearse; caducidad por convocatoria; caducidad diaria que libera la reserva.
+- Reversión de abonos por el subvencionante o la Junta, con motivo y auditoría.
+- Informe de justificación en JSON y PDF (admin y API de banca).
+- La Junta puede aprobar sus propios cambios de ajustes y publicar versiones fiscales que redacta (ADR-003).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

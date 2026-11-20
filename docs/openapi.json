@@ -7714,6 +7714,160 @@
           }
         }
       }
+    },
+    "/api/v1/bk/subvenciones": {
+      "post": {
+        "summary": "Crear una subvención o bono (fondos autorizados)",
+        "description": "Reserva el importe en la cuenta del programa. Un bono exige fecha de caducidad (por convocatoria o explícita). Sin fondos suficientes o sobre el presupuesto, se rechaza.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Subvención creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "subvencion": "9b8a7f6e-0503-4d0e-9f2a-3b4c5d6e7f80"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Programa fuera de tu entidad"
+          },
+          "422": {
+            "description": "Sin fondos, sobre presupuesto, sin permiso o caducidad no válida"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "program": "6e5d4c3b-0500-4a7b-8c9d-0e1f2a3b4c5d",
+                "beneficiary": "7f6e5d4c-0501-4b8c-9d0e-1f2a3b4c5d6e",
+                "amount": 120,
+                "convocatoria": "8a7f6e5d-0502-4c9d-8e1f-2a3b4c5d6e7f",
+                "caduca": "2027-03-31",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/subvenciones/{id}/revertir": {
+      "post": {
+        "summary": "Revertir un abono o toda la subvención",
+        "description": "El subvencionante anula un abono (con justificacion) o la subvención completa. Revierte el reembolso con asiento contrario, rechaza la justificación y devuelve la autorización. Requiere permiso de ejecutar en la entidad.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revertido: importe y número de abonos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "revertido": 120,
+                  "abonos": 1,
+                  "estado": "activa"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subvención fuera de tu entidad"
+          },
+          "422": {
+            "description": "Sin permiso, sin abonos que revertir o el beneficiario no tiene saldo para la reversión"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la subvención",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "motivo": "Incumplimiento del requisito de justificación",
+                "justificacion": "5c4b3a29-0504-4e5f-8a6b-7c8d9e0f1a2b",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/subvenciones/{id}/informe": {
+      "get": {
+        "summary": "Informe de justificación de una subvención",
+        "description": "Resumen con concedido, aprobado, pagado, pendiente, justificaciones y abonos revertidos. formato=pdf devuelve un PDF de una página.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informe (JSON) o PDF",
+            "content": {
+              "application/json": {
+                "example": {
+                  "programa": "Bono cultura",
+                  "estado": "activa",
+                  "concedido": 120,
+                  "pagado": 0,
+                  "pendiente_de_pago": 120
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subvención fuera de tu entidad"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la subvención",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "formato",
+            "in": "query",
+            "required": false,
+            "description": "json (defecto) o pdf",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "x-webhooks": {
