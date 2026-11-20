@@ -47,5 +47,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 - Las concesiones y convocatorias ya no se crean directamente en la tabla: pasan por su operación, que reserva fondos.
 - Las justificaciones pasan por la validación de elegibilidad.
 
+### Añadido
+- Las empresas abren convocatorias de subvención o bono, dirigidas a cualquier beneficiario de la entidad o a una empresa concreta. Sin autoconcesión. Bonos con caducidad obligatoria (migración 0066, ADR-004).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

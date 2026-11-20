@@ -7922,6 +7922,225 @@
           }
         }
       }
+    },
+    "/api/v1/bk/empresas/{id}/convocatorias": {
+      "get": {
+        "summary": "Convocatorias de una empresa",
+        "description": "Lista las convocatorias de subvención o bono de la empresa.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Convocatorias",
+            "content": {
+              "application/json": {
+                "example": {
+                  "convocatorias": [
+                    {
+                      "id": "a1b2c3d4-0600-4e5f-8a6b-7c8d9e0f1a2b",
+                      "nombre": "Bono cultura 2027",
+                      "tipo": "bono",
+                      "importe": 500,
+                      "estado": "abierta",
+                      "dirigida_a": "todos"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Abrir una convocatoria de subvención o bono",
+        "description": "La empresa convoca. dirigida_a=todos admite beneficiarios de la entidad; dirigida_a=empresa solo a la empresa indicada. Un bono exige caduca. La cuenta de fondos debe ser de la empresa. No se puede conceder a cuentas de la propia empresa.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Convocatoria creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "convocatoria": "a1b2c3d4-0600-4e5f-8a6b-7c8d9e0f1a2b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Destino, caducidad, cuenta o permiso no válidos"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "nombre": "Bono cultura 2027",
+                "tipo": "bono",
+                "importe": 500,
+                "desde": "2027-01-01",
+                "hasta": "2027-06-30",
+                "caduca": "2027-09-30",
+                "dirigida_a": "todos",
+                "cuenta_fondos": "7f6e5d4c-0601-4b8c-9d0e-1f2a3b4c5d6e",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/convocatorias/{conv}/concesiones": {
+      "post": {
+        "summary": "Conceder dentro de una convocatoria",
+        "description": "Reserva el importe en la cuenta de fondos. Rechaza beneficiarios fuera del destino de la convocatoria y cuentas de la propia empresa.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Concedida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "subvencion": "9b8a7f6e-0603-4d0e-9f2a-3b4c5d6e7f80"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Fuera de destino, autoconcesión, convocatoria cerrada o sin fondos"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "conv",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la convocatoria",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "beneficiary": "5d4c3b2a-0602-4c5d-8e9f-0a1b2c3d4e5f",
+                "amount": 120,
+                "caduca": "2027-09-30",
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/empresas/{id}/convocatorias/{conv}/cerrar": {
+      "post": {
+        "summary": "Cerrar una convocatoria",
+        "description": "Deja de admitir concesiones nuevas. Lo ya concedido sigue su curso.",
+        "x-permiso": "subvenciones:gestionar",
+        "x-grupo": "Subvenciones y reglas",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cerrada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "cerrada": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No abierta o sin permiso"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la empresa",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "conv",
+            "in": "path",
+            "required": true,
+            "description": "Identificador de la convocatoria",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip_actor": "23749931M"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "x-webhooks": {

@@ -153,6 +153,24 @@ flowchart TD
 
 **Qué significa.** Una deuda se cobra sola cuando vence, si no hay disputa abierta y hay saldo. Si no hay saldo, espera al siguiente ciclo diario. Una disputa la detiene hasta que se resuelva.
 
+## 10. Convocatoria de una empresa
+
+```mermaid
+flowchart TD
+  A["El titular abre la convocatoria"] --> B{"¿Destino?"}
+  B -->|todos| C["Beneficiarios de la entidad"]
+  B -->|empresa| D["Solo la empresa indicada"]
+  C --> E["Concede: reserva el importe en la cuenta de fondos"]
+  D --> E
+  E --> F{"¿Cuenta de la propia empresa?"}
+  F -->|Sí| X["Rechazada: autoconcesión"]
+  F -->|No| G["Concesión activa"]
+  G --> H{"¿Caduca antes de usarse?"}
+  H -->|Sí| I["Caducada: se libera la reserva"]
+```
+
+**Qué significa.** La empresa abre la convocatoria y elige el destino. Cada concesión reserva su importe en la cuenta de fondos de la propia empresa. Nunca se puede conceder a una cuenta de la empresa misma. Lo no usado caduca y se libera.
+
 ## Cómo validar estos diagramas
 
 Cada bloque `mermaid` se extrae a un archivo `.mmd` y se renderiza con el CLI de Mermaid:
