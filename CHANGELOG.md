@@ -50,5 +50,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Las empresas abren convocatorias de subvención o bono, dirigidas a cualquier beneficiario de la entidad o a una empresa concreta. Sin autoconcesión. Bonos con caducidad obligatoria (migración 0066, ADR-004).
 
+### Añadido
+- Pantalla «Convocatorias de empresa» en el admin: empresa, destino, cuenta de fondos, concedido y pagado; acciones para cerrar, fijar la caducidad de bonos, decidir la reautorización y ver las concesiones.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
