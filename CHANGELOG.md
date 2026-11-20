@@ -39,5 +39,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Lo recuperado de una deuda por reversión se vuelve a autorizar según la convocatoria (migración 0065).
 
+### Añadido
+- Documento de flujos con 9 diagramas validados (docs/FLUJOS.md).
+- Pantalla de financiación con el flujo de subvenciones, concesiones con reserva, informe PDF, reversión, convocatorias y explicaciones actualizadas.
+
+### Corregido
+- Las concesiones y convocatorias ya no se crean directamente en la tabla: pasan por su operación, que reserva fondos.
+- Las justificaciones pasan por la validación de elegibilidad.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

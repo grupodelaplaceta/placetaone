@@ -21,8 +21,9 @@ const R: Record<string, Cfg> = {
   scheduled: { table: "plone27_scheduled", sel: "id,from_account,to_account,amount,run_at,recurrence,status,memo", read: ALL, write: ["financiero"], create: ["from_account", "to_account", "amount", "run_at", "recurrence", "memo"], update: ["status"] },
   batches: { table: "plone27_batches", sel: "id,kind,from_account,status", read: ALL, write: ["financiero"], create: ["kind", "from_account"], update: [] },
   batchitems: { table: "plone27_batch_items", sel: "id,batch_id,to_account,amount,status,error", read: ALL, write: ["financiero"], create: ["batch_id", "to_account", "amount"], update: [] },
+  convocatorias: { table: "plone27_convocatorias", sel: "id,entidad,nombre,importe,desde,hasta,estado,caduca,reautoriza_recuperados", read: ALL, write: [], create: [], update: [], order: "desde" },
   grantprograms: { table: "plone27_grant_programs", sel: "id,name,kind,budget,funding_account", read: ALL, write: ["financiacion"], create: ["name", "kind", "budget", "funding_account"], update: ["name", "budget"], shared: true },
-  grants: { table: "plone27_grants", sel: "id,ref,program_id,beneficiary_account,granted,approved,paid", read: ALL, write: ["financiacion"], create: ["program_id", "beneficiary_account", "granted"], update: [], desc: "ref" },
+  grants: { table: "plone27_grants", sel: "id,ref,program_id,beneficiary_account,granted,approved,paid,estado,caduca,convocatoria,reserva", read: ALL, write: ["financiacion"], create: ["program_id", "beneficiary_account", "granted"], update: [], desc: "ref" },
   justifications: { table: "plone27_justifications", sel: "id,ref,grant_id,transaction_id,invoice_ref,amount,status,reimb_ref", read: ALL, write: ["financiacion", "financiero"], create: ["grant_id", "transaction_id", "invoice_ref", "amount"], update: ["status"], desc: "ref" },
   budgets: { table: "plone27_budgets", sel: "id,name,period,approved,committed,executed,restricted", read: ALL, write: ["financiero"], create: ["name", "period", "approved", "restricted"], update: ["approved", "committed", "executed"], shared: true },
   debts: { table: "plone27_debts", sel: "id,ref,account_id,creditor_account,principal,authorized_charges,paid,due_date,disputed", read: ALL, write: ["financiero"], create: ["account_id", "creditor_account", "principal", "due_date", "reason"], update: ["disputed", "authorized_charges", "due_date"], desc: "ref" },
@@ -69,6 +70,8 @@ export async function POST(req: Request, { params }: Ctx) {
   const s = await staffFrom(req, c.write); if (!s) return J("No autorizado", 403);
   const f = pick((await req.json().catch(() => ({}))) as Record<string, unknown>, c.create);
   if (scoped(s, c)) return J("Solo personal global", 403);
+  if (name === "grants") return J("Crea las subvenciones desde Subvenciones: así se reservan los fondos", 422);
+  if (name === "convocatorias") return J("Las convocatorias se gestionan desde Subvenciones", 422);
   if (name === "products" && f.aprobacion_automatica === true) f.approved_by = s.id;   // aprobación automática: queda registrado quién la configuró
   if (s.bank) { if (name === "banks") return J("Solo personal global crea entidades", 403); if (c.create.includes("bank_id")) f.bank_id = s.bank; }
   if (badScopes(f.scopes)) return J("Scope desconocido");
@@ -78,6 +81,10 @@ export async function POST(req: Request, { params }: Ctx) {
     if (f.description) await s.db.from(c.table).update({ description: f.description }).eq("id", data.id); row = data;
   } else if (name === "accounts" && f.product_id) {
     const { data, error } = await s.db.rpc("plone27_open_account_p", { p_product: f.product_id, p_name: f.name, p_owner: null, p_actor: s.id }); if (error) return J(error.message, 422); row = data;
+  } else if (name === "justifications") {
+    const { data, error } = await s.db.rpc("plone27_justify", { p_grant: f.grant_id as string, p_tx: f.transaction_id as string, p_invoice: (f.invoice_ref as string | undefined) ?? null, p_amount: Number(f.amount), p_actor: s.id });
+    if (error) return J(error.message, 422);
+    row = { id: data };
   } else if (name === "transactions" || name === "cards" || name === "settlements") {
     const [fn, args]: [string, Record<string, unknown>] = name === "transactions" ? ["plone27_transfer_fee", { p_key: randomUUID(), p_from: f.from_account, p_to: f.to_account, p_amount: f.amount, p_memo: f.memo ?? null }]
       : name === "cards" ? ["plone27_issue_card", { p_account: f.account_id, p_kind: f.kind, p_design: null, p_limit: f.credit_limit ?? null, p_test: !!f.is_test }] : ["plone27_settle_bank", { p_bank: f.bank_id, p_from: f.period_from, p_to: f.period_to }];
