@@ -126,7 +126,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
     subscriptions: b.renew ? ["plone27_subscription_renew", { p_account: b.account, p_user: null }] : null,
     debts: b.dispute ? ["plone27_dispute_open", { p_type: "debt", p_subject: id, p_reason: b.dispute }] : null,
     disputes: b.resolve ? ["plone27_dispute_resolve", { p_id: id, p_outcome: b.resolve, p_note: b.note ?? null }] : null,
-    approvals: b.approve !== undefined ? ["plone27_approval_decide", { p_id: id, p_approve: b.approve }] : null };
+    approvals: b.approve !== undefined ? ["plone27_approval_decide", { p_id: id, p_approve: b.approve }] : null,
+    taxversions: b.publish ? ["plone27_tax_publish", { p_version: id, p_approver: s.id }] : null };
   if (rpc[name]) { const { data, error } = await s.db.rpc(rpc[name]![0], { ...rpc[name]![1], p_actor: s.id }); if (error) return J(error.message, 422); await s.db.from("plone27_audit_log").insert({ actor: s.id, action: "admin_" + rpc[name]![0], entity: name, entity_id: id }); return Response.json({ ok: true, result: data }); } let f: Record<string, unknown> = pick(b, c.update);
   if ((name === "banks" || name === "products") && f.status === "active") f.approved_by = s.id;                       // activar exige aprobación registrada
   if (name === "products" && f.aprobacion_automatica === true) f.approved_by = s.id;

@@ -19,5 +19,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Aprobación automática de productos: un producto marcado se activa al guardarlo, con registro de quién lo configuró (migración 0062).
 
+### Cambiado
+- Panel de configuración rediseñado: ajustes agrupados por categoría, búsqueda, interruptores y selectores según el tipo de ajuste, y motivo obligatorio antes de proponer un cambio.
+- Asistente «Nuevo impuesto» en cuatro pasos (impuesto, cómo se cobra, vigencia y revisión), con vista previa del efecto.
+
+### Corregido
+- Las versiones fiscales se publican con la regla de aprobador distinto del autor (antes se publicaban sin esa comprobación desde el panel).
+- Eliminado el método «por tramos», que la base de datos no admite.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
