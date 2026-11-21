@@ -56,5 +56,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Guía de uso ampliada en PDF (docs/GUIA_DE_USO.pdf): esquemas de botones, ejemplos básicos y avanzados, gestión de incidencias, tabla de errores y listas de comprobación.
 
+### Añadido
+- Documento de APIs para bancos (docs/API_IMPLEMENTACION_BANCOS.md): familias, autenticación real, sesiones firmadas, idempotencia, errores, webhooks, recetas y catálogo completo generado desde el contrato.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
