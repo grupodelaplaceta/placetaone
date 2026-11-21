@@ -24,7 +24,7 @@ const dentro = (d: number) => new Date(Date.now() + d * 864e5).toISOString().sli
 export default function Panel() {
   const [rango] = useState(() => ({ desde: hoy(), hasta: dentro(7) }));
   const ov = useApi<Over>("/api/admin/overview", {});
-  const pr = useApi<Prev>(`/api/admin/previsiones?desde=${fechaSolo(rango.desde)}&hasta=${fechaSolo(rango.hasta)}`, {});
+  const pr = useApi<Prev>(`/api/admin/previsiones?desde=${rango.desde}&hasta=${rango.hasta}`, {});
 
   const alertas = arr<Alerta>(ov.data.alerts);
   const bancos = arr<Banco>(ov.data.banks);
