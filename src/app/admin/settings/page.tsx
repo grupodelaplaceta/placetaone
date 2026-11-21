@@ -24,8 +24,11 @@ function Ajuste({ s, tok, bank, avisar, recargar }: { s: S; tok: string; bank: s
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
   const cambiado = formatea(v) !== formatea(s.value);
+  // Como en la versión anterior: un ajuste que no admite cambio por entidad solo se cambia en el ámbito global
+  const bloqueado = !!bank && !s.bank_overridable;
 
   const proponer = async () => {
+    if (bloqueado) return avisar("Este ajuste solo se cambia en el ámbito global.");
     if (motivo.trim().length < 5) return avisar("Escribe un motivo de al menos 5 caracteres.");
     const valor = s.vtype === "number" ? Number(v) : s.vtype === "boolean" ? Boolean(v) : v;
     if (s.vtype === "number" && !Number.isFinite(valor as number)) return avisar("Valor numérico no válido.");
@@ -38,10 +41,10 @@ function Ajuste({ s, tok, bank, avisar, recargar }: { s: S; tok: string; bank: s
   };
 
   let control;
-  if (s.vtype === "boolean") control = <button role="switch" aria-checked={Boolean(v)} onClick={() => setV(!v)} style={{ ...botonSec, minWidth: 110, background: v ? "#e6f7ef" : "#f5f5f5" }}>{v ? "Activado" : "Desactivado"}</button>;
-  else if (s.allowed) control = <select value={String(v ?? "")} onChange={(e) => setV(e.target.value)} style={campo}>{s.allowed.map((o) => <option key={o} value={o}>{o}</option>)}</select>;
-  else if (s.vtype === "number") control = <input type="number" step="any" value={v === null || v === undefined ? "" : String(v)} min={s.min_v ?? undefined} max={s.max_v ?? undefined} onChange={(e) => setV(e.target.value === "" ? "" : Number(e.target.value))} style={{ ...campo, width: 130 }} />;
-  else control = <input value={String(v ?? "")} onChange={(e) => setV(e.target.value)} style={{ ...campo, width: 220 }} />;
+  if (s.vtype === "boolean") control = <button role="switch" disabled={bloqueado} aria-checked={Boolean(v)} onClick={() => setV(!v)} style={{ ...botonSec, minWidth: 110, background: v ? "#e6f7ef" : "#f5f5f5" }}>{v ? "Activado" : "Desactivado"}</button>;
+  else if (s.allowed) control = <select disabled={bloqueado} value={String(v ?? "")} onChange={(e) => setV(e.target.value)} style={campo}>{s.allowed.map((o) => <option key={o} value={o}>{o}</option>)}</select>;
+  else if (s.vtype === "number") control = <input disabled={bloqueado} type="number" step="any" value={v === null || v === undefined ? "" : String(v)} min={s.min_v ?? undefined} max={s.max_v ?? undefined} onChange={(e) => setV(e.target.value === "" ? "" : Number(e.target.value))} style={{ ...campo, width: 130 }} />;
+  else control = <input disabled={bloqueado} value={String(v ?? "")} onChange={(e) => setV(e.target.value)} style={{ ...campo, width: 220 }} />;
 
   return (
     <div style={{ borderTop: "1px solid #eee", padding: "12px 0", display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center" }}>
@@ -53,6 +56,7 @@ function Ajuste({ s, tok, bank, avisar, recargar }: { s: S; tok: string; bank: s
         <div style={{ fontSize: 12, color: "#777", fontFamily: "monospace" }}>
           {s.key} · actual: <b>{formatea(s.value)}</b>{s.min_v !== null && <> · rango {s.min_v}–{s.max_v}</>}
         </div>
+        {bloqueado && <div style={{ fontSize: 12, color: "#8a5a00" }}>Solo se cambia en el ámbito global</div>}
         {cambiado && (
           <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input placeholder="Motivo (obligatorio)" value={motivo} onChange={(e) => setMotivo(e.target.value)} style={{ ...campo, minWidth: 260 }} />
