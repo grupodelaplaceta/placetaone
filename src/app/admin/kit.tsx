@@ -1,5 +1,5 @@
-import { fechaHora } from "@/lib/fechas";
 "use client";
+import { fechaHora } from "@/lib/fechas";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
