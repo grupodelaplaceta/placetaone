@@ -1,0 +1,19 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    services:
+      postgres: {image: "postgres:16", env: {POSTGRES_PASSWORD: pg}, ports: ["5432:5432"], options: "--health-cmd pg_isready --health-interval 5s --health-retries 10"}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          export PGPASSWORD=pg; P="psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -d postgres"
+          for f in supabase/tests/stub.sql supabase/migrations/*.sql supabase/tests/acceptance.sql; do echo "== $f"; $P -f "$f"; done
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - run: npm install && npx tsc --noEmit
