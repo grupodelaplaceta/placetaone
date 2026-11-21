@@ -53,5 +53,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Pantalla «Convocatorias de empresa» en el admin: empresa, destino, cuenta de fondos, concedido y pagado; acciones para cerrar, fijar la caducidad de bonos, decidir la reautorización y ver las concesiones.
 
+### Añadido
+- Guía de uso ampliada en PDF (docs/GUIA_DE_USO.pdf): esquemas de botones, ejemplos básicos y avanzados, gestión de incidencias, tabla de errores y listas de comprobación.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

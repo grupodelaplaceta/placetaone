@@ -70,7 +70,7 @@ Nunca se usan variables `NEXT_PUBLIC_*` para secretos. Algunas variables aceptan
 - Despliegue y entornos: `docs/DESPLIEGUE.md`, `docs/ENTORNOS.md`.
 - Seguridad: [`SECURITY.md`](SECURITY.md).
 - Agentes y automatización: [`AGENTS.md`](AGENTS.md).
-- Guía de uso paso a paso: [`docs/GUIA_DE_USO.md`](docs/GUIA_DE_USO.md).
+- Guía de uso paso a paso (PDF, con esquemas de botones, ejemplos e incidencias): [`docs/GUIA_DE_USO.pdf`](docs/GUIA_DE_USO.pdf). Versión breve en Markdown: [`docs/GUIA_DE_USO.md`](docs/GUIA_DE_USO.md).
 - Flujos del sistema, con diagramas: [`docs/FLUJOS.md`](docs/FLUJOS.md).
 - Novedades: [`CHANGELOG.md`](CHANGELOG.md).
 
