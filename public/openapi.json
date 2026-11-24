@@ -8225,8 +8225,8 @@
     "/api/v1/bk/joven/cuentas/{iban}/movimientos": {
       "get": {
         "summary": "Movimientos de una cuenta Placeta Joven",
-        "description": "Lista entradas y salidas con su contraparte y, en las compras, el desglose de base e IVA. Por defecto, los últimos 30 días.",
-        "x-permiso": "joven:gestionar",
+        "description": "Solo lectura: funciona con el permiso joven:leer de cualquier banco. Lista entradas y salidas con su contraparte y, en las compras, el desglose de base e IVA. Por defecto, los últimos 30 días.",
+        "x-permiso": "joven:leer",
         "x-grupo": "Placeta Joven",
         "security": [
           {
@@ -8440,6 +8440,104 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/joven/cuentas/{iban}": {
+      "get": {
+        "summary": "Leer una cuenta Placeta Joven (solo lectura)",
+        "description": "Estado, si está congelada, motivo y disponible. No muestra el DIP. Cualquier banco con joven:leer puede consultarla; no puede operar con ella.",
+        "x-permiso": "joven:leer",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN de la cuenta Joven",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cuenta",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0000-0300",
+                  "estado": "active",
+                  "congelada": false,
+                  "motivo_congelacion": null,
+                  "disponible": 40,
+                  "banco": "Banco de La Placeta"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe"
+          }
+        }
+      }
+    },
+    "/api/v1/bk/joven/cuentas/{iban}/congelar": {
+      "post": {
+        "summary": "Congelar o descongelar una cuenta Placeta Joven",
+        "description": "Solo Banco de La Placeta. Una cuenta congelada no admite ningún movimiento (compras, recargas ni transferencias). Para congelar, el motivo tiene al menos 10 caracteres.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN de la cuenta Joven",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "congelada": true,
+                "motivo": "Suscripción de Placeta Joven vencida"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Actualizada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0000-0300",
+                  "congelada": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos no válidos"
+          },
+          "422": {
+            "description": "No es Banco de La Placeta o la cuenta no existe"
           }
         }
       }

@@ -3,6 +3,7 @@
 export const SCOPES = [
   { k: "accounts:read", l: "Consultar cuentas y saldos" },
   { k: "joven:gestionar", l: "Operar Placeta Joven: cuentas, compras, recargas y movimientos" },
+  { k: "joven:leer", l: "Leer cuentas Placeta Joven (solo lectura, cualquier banco)" },
   { k: "accounts:write", l: "Abrir cuentas desde un producto" },
   { k: "transactions:read", l: "Ver movimientos de una cuenta" },
   { k: "transfers:write", l: "Crear transferencias" },

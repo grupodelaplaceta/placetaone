@@ -62,5 +62,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Placeta Joven: cuenta joven por DIP, circulación limitada a cuentas Joven, administración y comercios Joven, compras con IVA desglosado (ajuste joven_iva_pct), recargas, movimientos y API (migración 0067, ADR-005). No ejecutado en PostgreSQL.
 
+### Añadido
+- Placeta Joven: cuentas propiedad de Banco de La Placeta, congelación por API que bloquea cualquier movimiento, y lectura para otros bancos con joven:leer (migración 0068). No ejecutado en PostgreSQL.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

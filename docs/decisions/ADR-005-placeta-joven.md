@@ -14,3 +14,9 @@
 - Todas las cuentas `system` son destino válido. Si la Junta quiere un conjunto cerrado, hay que indicarlo.
 - Falta decidir si Placeta Joven se fusiona con `junior` o convive con él.
 - Falta la verificación de edad y el tutor legal, si la plataforma va a admitir menores.
+
+## Actualización (migración 0068)
+- **Banco propietario:** todas las cuentas Joven pertenecen a Banco de La Placeta. Solo ese banco crea, compra, recarga y congela.
+- **Solo lectura para los demás bancos** (`joven:leer`). Decisión de privacidad abierta: ver `docs/PLACETA_JOVEN.md`, sección 12.
+- **Congelación:** estado por cuenta. Bloquea cualquier movimiento en la base de datos, no solo en la API.
+- **Marca obligatoria:** ningún movimiento sobre una cuenta Joven sale sin la marca de Placeta Joven.

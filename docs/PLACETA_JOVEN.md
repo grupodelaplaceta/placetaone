@@ -88,3 +88,33 @@ Por defecto muestra los últimos 30 días.
 
 - **Configuración → Placeta Joven:** el porcentaje de IVA.
 - **Registros:** creación de cuentas, marcas de comercio y compras.
+
+## 12. Banco propietario, congelación y solo lectura (migración 0068)
+
+**Dueño de las cuentas.** Todas las cuentas Placeta Joven pertenecen a **Banco de La Placeta**, aunque el titular sea una persona. El banco debe existir con ese nombre exacto (créalo en Bancos); si falta, las operaciones fallan con «Falta el banco "Banco de La Placeta"».
+
+**Quién puede hacer qué:**
+
+| Acción | Banco de La Placeta | Otros bancos |
+|---|---|---|
+| Crear la cuenta de un DIP | Sí | No |
+| Comprar, recargar, congelar | Sí | **No** (se rechaza en la base de datos) |
+| Leer estado, saldo y movimientos (`joven:leer`) | Sí | Sí, **solo lectura**, si la Junta les concede el permiso |
+
+**Congelar.** Placeta Joven congela la cuenta cuando la suscripción no está al día:
+
+- `POST /api/v1/bk/joven/cuentas/{iban}/congelar` con `{ "congelada": true, "motivo": "…" }` (motivo de al menos 10 caracteres).
+- Mientras esté congelada, **ningún movimiento** es posible: ni compras, ni recargas, ni transferencias, ni ningún otro que la toque. La base de datos lo comprueba en cada transacción.
+- Para reactivarla: `"congelada": false`.
+
+**Leer.** `GET /api/v1/bk/joven/cuentas/{iban}` devuelve estado, congelación, motivo y disponible. No devuelve el DIP. Los movimientos (`.../movimientos`) también son de solo lectura.
+
+**Garantía en la base de datos.** Ningún movimiento sobre una cuenta Joven puede salir sin la marca de Placeta Joven, aunque alguien llame a una función interna por otro camino. Por eso, un banco que intente operar por una ruta genérica recibe el error «Las cuentas Placeta Joven solo se operan desde Placeta Joven».
+
+**Permisos.** Solo el cliente de Banco de La Placeta debe tener `joven:gestionar`. Los demás bancos, como mucho, `joven:leer`.
+
+### Límites nuevos (léelos antes de publicar)
+
+- **Lectura entre bancos.** Cualquier banco con `joven:leer` puede ver el saldo y los movimientos de **cualquier** cuenta Joven, aunque no sea suya. Es lo que se pidió, pero es una decisión de privacidad: la Junta debe valorar si se limita a los clientes de cada banco.
+- **Reversiones de compras.** Una reversión de una compra Joven no puede hacerse por la ruta genérica (la marca Joven la bloquea). Hay que añadir un camino específico si se necesita.
+- **Lo que no está verificado.** Como todo este módulo, la regla de bloqueo no se ha probado todavía en PostgreSQL.
