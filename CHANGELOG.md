@@ -71,5 +71,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Placeta Joven: paso de cuenta Junior a Joven, solo a partir de 16 años cumplidos. La misma cuenta cambia de tipo (migración 0070).
 
+### Cambiado
+- Pasar a Placeta Joven: la cuenta junior pasa a personal, el tutor se retira, y la cuenta Joven es nueva y aislada (migración 0071).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
