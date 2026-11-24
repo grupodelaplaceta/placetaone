@@ -7,7 +7,7 @@ type S = { key: string; category: string; description: string; vtype: string; al
 type C = { id: string; key: string; bank_id: string | null; new_value: unknown; old_value: unknown; reason: string };
 type Datos = { settings: S[]; pending: C[]; banks: { id: string; code: string; name: string }[] };
 
-const CATEGORIAS: Record<string, string> = { aprobaciones: "Aprobaciones", bienestar: "RBU y bienestar", cobros: "Cobros", cuentas: "Cuentas", finanzas: "Finanzas", fiscalidad: "Fiscalidad", integraciones: "Integraciones", junior: "Cuentas Junior", laboral: "Laboral", normas: "Normas y topes", tasas: "Tasas" };
+const CATEGORIAS: Record<string, string> = { joven: "Placeta Joven", aprobaciones: "Aprobaciones", bienestar: "RBU y bienestar", cobros: "Cobros", cuentas: "Cuentas", finanzas: "Finanzas", fiscalidad: "Fiscalidad", integraciones: "Integraciones", junior: "Cuentas Junior", laboral: "Laboral", normas: "Normas y topes", tasas: "Tasas" };
 const caja = { background: "#fff", border: "1px solid #ddd", borderRadius: 12, padding: 18, marginBottom: 16 } as const;
 const campo = { padding: "6px 10px", borderRadius: 8, border: "1px solid #bbb" } as const;
 const boton = { padding: "6px 14px", borderRadius: 8, border: "1px solid #0b6", background: "#0b6", color: "#fff", cursor: "pointer" } as const;

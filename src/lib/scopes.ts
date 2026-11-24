@@ -2,6 +2,7 @@
 // Cada permiso de la API pública debe estar en esta lista; lo comprueba verificacion/openapi_rutas.py.
 export const SCOPES = [
   { k: "accounts:read", l: "Consultar cuentas y saldos" },
+  { k: "joven:gestionar", l: "Operar Placeta Joven: cuentas, compras, recargas y movimientos" },
   { k: "accounts:write", l: "Abrir cuentas desde un producto" },
   { k: "transactions:read", l: "Ver movimientos de una cuenta" },
   { k: "transfers:write", l: "Crear transferencias" },

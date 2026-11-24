@@ -8141,6 +8141,308 @@
           }
         }
       }
+    },
+    "/api/v1/bk/joven/cuentas": {
+      "get": {
+        "summary": "Cuenta Placeta Joven de una persona",
+        "description": "Devuelve el IBAN y el disponible de la cuenta Joven del DIP. Sirve para que el portal la seleccione sola.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cuenta",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0000-0300",
+                  "disponible": 40
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La persona no tiene cuenta Joven en tu entidad"
+          }
+        },
+        "parameters": [
+          {
+            "name": "dip",
+            "in": "query",
+            "required": true,
+            "description": "DIP de la persona",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Crear la cuenta Placeta Joven de una persona",
+        "description": "Crea la cuenta a nombre del DIP. Solo puede recibir dinero de cuentas Joven, de administración o de comercios Joven, y solo puede gastarlo en comercios Joven. Si ya existe, la devuelve.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Creada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0000-0300",
+                  "creada": true
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Ya existía"
+          },
+          "422": {
+            "description": "Entidad no activa"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "23749931M"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/joven/cuentas/{iban}/movimientos": {
+      "get": {
+        "summary": "Movimientos de una cuenta Placeta Joven",
+        "description": "Lista entradas y salidas con su contraparte y, en las compras, el desglose de base e IVA. Por defecto, los últimos 30 días.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Movimientos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "movimientos": [
+                    {
+                      "id": "6a5b4c3d-0700-4b7c-8d8e-9f0a1b2c3d4e",
+                      "fecha": "2026-11-20T10:12:00Z",
+                      "tipo": "salida",
+                      "importe": 25,
+                      "concepto": "Compra cuaderno",
+                      "estado": "posted",
+                      "contraparte": {
+                        "tipo": "business",
+                        "nombre": "Papelería Joven"
+                      },
+                      "desglose": {
+                        "base": 22.32,
+                        "iva": 2.68,
+                        "iva_pct": 12
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "iban",
+            "in": "path",
+            "required": true,
+            "description": "IBAN de la cuenta Joven",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "required": false,
+            "description": "AAAA-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limite",
+            "in": "query",
+            "required": false,
+            "description": "Máximo 200 (por defecto 50)",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/joven/pagos": {
+      "post": {
+        "summary": "Comprar en un comercio Placeta Joven",
+        "description": "Cobra el importe a la cuenta Joven. Desglosa el IVA (ajuste joven_iva_pct): la base va al comercio y el IVA, a la cuenta recaudadora. Con la misma clave, no se cobra dos veces.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Pagado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "base": 22.32,
+                  "iva": 2.68,
+                  "iva_pct": 12,
+                  "total": 25,
+                  "repetida": false
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Clave repetida: devuelve el pago original"
+          },
+          "422": {
+            "description": "Saldo insuficiente, comercio no válido o destino no permitido"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Identificador de la operación (8 a 80 caracteres). Repetirla no duplica el movimiento.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "23749931M",
+                "comercio_iban": "PZ-0000-0400",
+                "importe": 25,
+                "concepto": "Compra cuaderno"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/joven/recargas": {
+      "post": {
+        "summary": "Recargar una cuenta Placeta Joven",
+        "description": "Recarga desde una cuenta de administración de tu entidad. Sin IVA.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Recargada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "transaccion": "4d3c2b1a-0701-4e5f-8a6b-7c8d9e0f1a2b"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Origen no es administración o saldo insuficiente"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Identificador de la operación (8 a 80 caracteres). Repetirla no duplica el movimiento.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "origen_iban": "PZ-0000-0001",
+                "dip": "23749931M",
+                "importe": 50,
+                "concepto": "Recarga mensual"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/joven/comercios": {
+      "get": {
+        "summary": "Comercios Placeta Joven de tu entidad",
+        "description": "Lista las empresas que aceptan Placeta Joven. Son los únicos destinos válidos para una compra.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comercios",
+            "content": {
+              "application/json": {
+                "example": {
+                  "comercios": [
+                    {
+                      "iban": "PZ-0000-0400",
+                      "name": "Papelería Joven"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "x-webhooks": {
