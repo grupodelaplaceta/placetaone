@@ -8546,6 +8546,46 @@
           }
         }
       }
+    },
+    "/api/v1/bk/joven/promociones": {
+      "post": {
+        "summary": "Pasar una cuenta Junior a Placeta Joven",
+        "description": "Solo Banco de La Placeta. Exige 16 años cumplidos según la fecha de nacimiento de la ficha junior, y elegibilidad (16 a 31 años con periodo de gracia). La misma cuenta cambia de tipo y conserva IBAN, saldo e historial.",
+        "x-permiso": "joven:gestionar",
+        "x-grupo": "Placeta Joven",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "23749931M"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Promovida",
+            "content": {
+              "application/json": {
+                "example": {
+                  "iban": "PZ-0000-0500",
+                  "promovida": true,
+                  "disponible": 12.5
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Menor de 16 años, sin ficha junior con fecha de nacimiento, sin cuenta Junior, fuera de edad o ya es Joven"
+          }
+        }
+      }
     }
   },
   "x-webhooks": {

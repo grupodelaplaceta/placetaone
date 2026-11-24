@@ -147,3 +147,19 @@ Ejemplos:
 ### Límites
 - La fecha de nacimiento la proporciona el banco. Placeta Joven no la verifica con documentos.
 - La regla no se ha probado todavía en PostgreSQL.
+
+## 14. Pasar de Junior a Placeta Joven (migración 0070)
+
+**Requisito único y obligatorio: 16 años cumplidos.** La edad se calcula con la fecha de nacimiento de la ficha junior de la persona. Antes de los 16 no se puede pasar, y el sistema lo rechaza.
+
+`POST /api/v1/bk/joven/promociones` con `{ "dip": "…" }`
+
+- La **misma cuenta** cambia de tipo: conserva IBAN, saldo e historial de movimientos.
+- A partir de ese momento, sus movimientos nuevos siguen las reglas de Placeta Joven (circulación, IVA, congelación y edad).
+- Solo puede pasar una persona con **una** cuenta Junior en la entidad. Si tiene más de una, hay que revisarla a mano.
+- Si ya tiene cuenta Joven, se rechaza.
+
+**Pendiente de decidir:**
+- La promoción la pide la entidad (o la plataforma) en el momento en que la persona cumple 16. El sistema **no la hace automáticamente**.
+- El tutor de la cuenta junior: el alta de Placeta Joven no lo pide, y tampoco dice cuándo termina su papel. Hay que decidirlo.
+- El saldo que ya tenía la cuenta junior no se revisa: venía con las reglas de Junior. Si quieres revisarlo, hay que añadirlo.
