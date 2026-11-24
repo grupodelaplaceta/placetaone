@@ -130,7 +130,7 @@ Ejemplos:
 | Fecha de nacimiento | Puede abrir la cuenta | Elegible hasta |
 |---|---|---|
 | 2010-05-03 | Sí, desde el 3 de mayo de 2026 (cumple 16) | 31 de diciembre de 2041 |
-| 1995-06-01 | No: cumplió 31 en 2026 y debe abrirla dentro de su año de gracia, que termina el 31 de diciembre de 2026 | 31 de diciembre de 2026 |
+| 1995-06-01 | Sí, hoy (21/11/2026): cumple 31 en 2026, así que puede abrir la cuenta o usarla hasta el 31 de diciembre de 2026. A partir de 2027, no | 31 de diciembre de 2026 |
 | 1980-01-15 | No: está fuera de la edad | — |
 
 **Cuándo se comprueba:**
