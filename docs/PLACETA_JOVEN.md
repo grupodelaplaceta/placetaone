@@ -118,3 +118,32 @@ Por defecto muestra los últimos 30 días.
 - **Lectura entre bancos.** Cualquier banco con `joven:leer` puede ver el saldo y los movimientos de **cualquier** cuenta Joven, aunque no sea suya. Es lo que se pidió, pero es una decisión de privacidad: la Junta debe valorar si se limita a los clientes de cada banco.
 - **Reversiones de compras.** Una reversión de una compra Joven no puede hacerse por la ruta genérica (la marca Joven la bloquea). Hay que añadir un camino específico si se necesita.
 - **Lo que no está verificado.** Como todo este módulo, la regla de bloqueo no se ha probado todavía en PostgreSQL.
+
+## 13. Edad y periodo de gracia (migración 0069)
+
+**Quién puede tener una cuenta Placeta Joven:** personas de **16 a 31 años**.
+
+**Periodo de gracia.** La persona sigue siendo elegible hasta el **31 de diciembre del año en que cumple 31 años**. Después, la cuenta se congela sola.
+
+Ejemplos:
+
+| Fecha de nacimiento | Puede abrir la cuenta | Elegible hasta |
+|---|---|---|
+| 2010-05-03 | Sí, desde el 3 de mayo de 2026 (cumple 16) | 31 de diciembre de 2041 |
+| 1995-06-01 | No: cumplió 31 en 2026 y debe abrirla dentro de su año de gracia, que termina el 31 de diciembre de 2026 | 31 de diciembre de 2026 |
+| 1980-01-15 | No: está fuera de la edad | — |
+
+**Cuándo se comprueba:**
+1. **Al abrir la cuenta** (`POST /api/v1/bk/joven/cuentas` con `fecha_nacimiento`). Sin fecha verificada, no se abre.
+2. **En cada compra y recarga.** Si la persona ya no es elegible, la operación se rechaza aunque la cuenta no esté congelada.
+3. **Cada día.** El proceso diario congela las cuentas de quienes han dejado de ser elegibles, con el motivo en la cuenta.
+
+**Descongelar.** No se puede descongelar a quien ya no es elegible: la API lo rechaza.
+
+**Lectura.** `GET /api/v1/bk/joven/cuentas/{iban}` indica `elegible: true o false`, sin mostrar la fecha de nacimiento ni el DIP.
+
+**Cuentas creadas antes de esta versión** no tienen fecha de nacimiento verificada: no pueden comprar ni recargar hasta que se registre su fecha con el alta.
+
+### Límites
+- La fecha de nacimiento la proporciona el banco. Placeta Joven no la verifica con documentos.
+- La regla no se ha probado todavía en PostgreSQL.

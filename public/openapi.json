@@ -8182,8 +8182,8 @@
         ]
       },
       "post": {
-        "summary": "Crear la cuenta Placeta Joven de una persona",
-        "description": "Crea la cuenta a nombre del DIP. Solo puede recibir dinero de cuentas Joven, de administración o de comercios Joven, y solo puede gastarlo en comercios Joven. Si ya existe, la devuelve.",
+        "summary": "Abrir la cuenta Placeta Joven de una persona",
+        "description": "Solo para personas de 16 a 31 años. El periodo de gracia dura hasta el 31 de diciembre del año en que se cumplen 31. Exige la fecha de nacimiento verificada. Si la cuenta ya existe, la devuelve (200).",
         "x-permiso": "joven:gestionar",
         "x-grupo": "Placeta Joven",
         "security": [
@@ -8207,7 +8207,10 @@
             "description": "Ya existía"
           },
           "422": {
-            "description": "Entidad no activa"
+            "description": "Menor de 16 años, fuera de la edad Placeta Joven o fecha de nacimiento inconsistente"
+          },
+          "400": {
+            "description": "Fecha de nacimiento no válida"
           }
         },
         "requestBody": {
@@ -8215,7 +8218,8 @@
           "content": {
             "application/json": {
               "example": {
-                "dip": "23749931M"
+                "dip": "23749931M",
+                "fecha_nacimiento": "2010-05-03"
               }
             }
           }
@@ -8447,7 +8451,7 @@
     "/api/v1/bk/joven/cuentas/{iban}": {
       "get": {
         "summary": "Leer una cuenta Placeta Joven (solo lectura)",
-        "description": "Estado, si está congelada, motivo y disponible. No muestra el DIP. Cualquier banco con joven:leer puede consultarla; no puede operar con ella.",
+        "description": "Estado, si está congelada, motivo y disponible. No muestra el DIP. Cualquier banco con joven:leer puede consultarla; no puede operar con ella. Incluye 'elegible': si la persona puede operar hoy según la edad.",
         "x-permiso": "joven:leer",
         "x-grupo": "Placeta Joven",
         "security": [
@@ -8477,7 +8481,8 @@
                   "congelada": false,
                   "motivo_congelacion": null,
                   "disponible": 40,
-                  "banco": "Banco de La Placeta"
+                  "banco": "Banco de La Placeta",
+                  "elegible": true
                 }
               }
             }
@@ -8491,7 +8496,7 @@
     "/api/v1/bk/joven/cuentas/{iban}/congelar": {
       "post": {
         "summary": "Congelar o descongelar una cuenta Placeta Joven",
-        "description": "Solo Banco de La Placeta. Una cuenta congelada no admite ningún movimiento (compras, recargas ni transferencias). Para congelar, el motivo tiene al menos 10 caracteres.",
+        "description": "Solo Banco de La Placeta. Una cuenta congelada no admite ningún movimiento (compras, recargas ni transferencias). Para congelar, el motivo tiene al menos 10 caracteres. Una persona que deja de ser elegible se congela sola cada día. No se puede descongelar a quien ya no es elegible.",
         "x-permiso": "joven:gestionar",
         "x-grupo": "Placeta Joven",
         "security": [

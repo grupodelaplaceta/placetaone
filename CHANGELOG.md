@@ -65,5 +65,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Placeta Joven: cuentas propiedad de Banco de La Placeta, congelación por API que bloquea cualquier movimiento, y lectura para otros bancos con joven:leer (migración 0068). No ejecutado en PostgreSQL.
 
+### Añadido
+- Placeta Joven: edad de 16 a 31 años con periodo de gracia hasta el 31 de diciembre del año en que se cumplen 31. Comprobada al abrir la cuenta, en cada operación y cada día (migración 0069).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
