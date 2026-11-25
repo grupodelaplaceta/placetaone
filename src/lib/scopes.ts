@@ -4,6 +4,8 @@ export const SCOPES = [
   { k: "accounts:read", l: "Consultar cuentas y saldos" },
   { k: "joven:gestionar", l: "Operar Placeta Joven: cuentas, compras, recargas y movimientos" },
   { k: "joven:leer", l: "Leer cuentas Placeta Joven (solo lectura, cualquier banco)" },
+  { k: "avisos:gestionar", l: "Leer y acusar avisos de justicia para notificar a sus clientes" },
+  { k: "justicia:denunciar", l: "Presentar denuncias de sanciones en nombre de sus clientes" },
   { k: "accounts:write", l: "Abrir cuentas desde un producto" },
   { k: "transactions:read", l: "Ver movimientos de una cuenta" },
   { k: "transfers:write", l: "Crear transferencias" },

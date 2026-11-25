@@ -80,5 +80,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Cambiado
 - Sanciones sin doble aprobación: la Junta propone y ejecuta. Junior: la sanción va a la cuenta del tutor. Joven: sanciones conforme a sus normas. Multas a administración o tributos (migración 0073).
 
+### Añadido
+- Justicia: avisos para que cada banco notifique con su propio Gmail, ejecuciones programadas con 5 horas de antelación, recurso solo mediante denuncia, y revocación de sanciones con deshacer efectos (migración 0074).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

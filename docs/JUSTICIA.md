@@ -42,3 +42,32 @@
 - **No hay pantalla en el panel.** Las sanciones se gestionan por API.
 - **El aviso a la persona no lo envía el sistema.** La Junta registra la notificación.
 - **No hay canal propio para recurrir.** Lo registra la Junta en nombre de la persona.
+
+
+## Actualización: avisos, denuncia, programación y revocación (migración 0074)
+
+**Quién notifica.** Placeta **no envía correos**. Cada banco envía sus avisos con su propio Gmail. Placeta publica los avisos en `GET /api/v1/bk/avisos` (permiso `avisos:gestionar`) y el banco acusa recibo con `POST /api/v1/bk/avisos/{id}/acuse`.
+
+**Tipos de aviso:** sanción notificada, ejecución prevista, cobro de multa previsto y sanción revocada.
+
+**Antelación de 5 horas.** Ninguna ejecución se programa con menos de 5 horas. El aviso de ejecución se publica exactamente 5 horas antes de la hora programada. Las multas se cobran a las 04:00 UTC del día de vencimiento; su aviso se publica a las 23:00 UTC del día anterior.
+
+**Programar.** `POST /api/admin/justicia/sanciones/{id}/programar` con `{ "fecha": "AAAA-MM-DDTHH:MM:SSZ" }`. Solo sanciones firmes.
+
+**Ejecutar.** El proceso diario ejecuta las sanciones cuya hora programada ya ha llegado. Como el proceso corre a las 04:00 UTC, las ejecuciones programadas se hacen en el primer ciclo diario a partir de esa hora. Por eso conviene programarlas a las 04:00 UTC.
+
+**Recurrir solo denunciando.** La persona sancionada o su tutor presentan denuncia a través de su banco: `POST /api/v1/bk/sanciones/{id}/denuncia` (permiso `justicia:denunciar`). La denuncia abre el recurso. Ya no existe la opción de recurrir desde la Junta. Debe presentarse dentro del plazo de 30 días desde la notificación, y solo la persona sancionada o su tutor pueden presentarla.
+
+**Revocar.** `POST /api/admin/justicia/sanciones/{id}/revocar` con `{ "motivo": "…" }`. Deshace los efectos:
+- **Incautación o multa a cuenta Joven ya cobrada:** devuelve el dinero con un movimiento contrario.
+- **Embargo ejecutado:** libera el dinero.
+- **Multa convertida en deuda:** si no tiene pagos, se marca como disputada, para que el cobro automático no la cobre. Si ya tiene pagos, hay que revertirlos antes.
+- **Sanción aún no ejecutada:** se cancela sin más.
+
+Todas las revocaciones generan un aviso para el banco.
+
+**Lo que NO está hecho:**
+- La **denuncia la presenta la persona a través de su banco**. Placeta no tiene canal propio para ello.
+- **Retirar una denuncia** no está implementado.
+- **El cobro automático de multas a cuentas personales no respeta todavía el saldo inembargable.**
+- **No hay pantalla en el panel.** Las sanciones se gestionan por API.

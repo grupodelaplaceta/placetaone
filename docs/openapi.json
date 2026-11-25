@@ -8588,6 +8588,130 @@
           }
         }
       }
+    },
+    "/api/v1/bk/avisos": {
+      "get": {
+        "summary": "Avisos pendientes de tus clientes",
+        "description": "Avisos ya visibles (de embargos, cobros de multa, sanciones notificadas y revocadas) de las cuentas de tu entidad. Tú los envías con tu propio Gmail y acusas recibo.",
+        "x-permiso": "avisos:gestionar",
+        "x-grupo": "Justicia",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Avisos",
+            "content": {
+              "application/json": {
+                "example": {
+                  "avisos": [
+                    {
+                      "id": "7b6a5c4d-0800-4e5f-8a6b-7c8d9e0f1a2b",
+                      "tipo": "ejecucion_prevista",
+                      "iban": "PZ-0001-0002",
+                      "mensaje": "Está prevista una multa sobre tu cuenta el 25/11/2026 10:00 (UTC).",
+                      "ejecuta_en": "2026-11-25T10:00:00Z",
+                      "visible_desde": "2026-11-25T05:00:00Z",
+                      "sancion": "8c7b6a5d-0801-4f6a-9b8c-0d1e2f3a4b5c"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bk/avisos/{id}/acuse": {
+      "post": {
+        "summary": "Acusar recibo de un aviso",
+        "description": "Marca el aviso como entregado para que no vuelva a aparecer.",
+        "x-permiso": "avisos:gestionar",
+        "x-grupo": "Justicia",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acusado",
+            "content": {
+              "application/json": {
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aviso no encontrado o ya entregado"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/bk/sanciones/{id}/denuncia": {
+      "post": {
+        "summary": "Denunciar una sanción (única vía de recurso)",
+        "description": "La persona sancionada, o su tutor, presenta denuncia a través de su banco. Abre el recurso. Solo dentro del plazo tras la notificación.",
+        "x-permiso": "justicia:denunciar",
+        "x-grupo": "Justicia",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Denuncia presentada",
+            "content": {
+              "application/json": {
+                "example": {
+                  "denuncia": "5d4c3b2a-0802-4c5d-8e9f-0a1b2c3d4e5f"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Fuera de plazo, sanción no notificada o persona no válida"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "dip": "23749931M",
+                "texto": "No reconozco la operación que motiva la sanción; adjunto justificantes."
+              }
+            }
+          }
+        }
+      }
     }
   },
   "x-webhooks": {
