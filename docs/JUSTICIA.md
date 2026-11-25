@@ -86,3 +86,16 @@ Todas las revocaciones generan un aviso para el banco.
 - El **control de contratos** ya lee el SMI mensual en cada alta: un contrato por debajo del nuevo SMI se rechaza.
 - El **SMI semanal** (36,92) es solo informativo y no se actualiza solo.
 - La lista de preparación de la instalación (una consulta de diagnóstico, no una función del sistema) sigue mostrando «160 Pz»; no afecta al funcionamiento.
+
+
+## Actualización: denuncias ante Justicia, externa (migración 0077)
+
+**Justicia no es un banco.** Es un organismo externo. Las denuncias se presentan ante Justicia, no a través de la entidad de la persona. Por eso:
+
+- **Los bancos ya no pueden presentar denuncias.** La ruta de denuncia de banca se ha retirado.
+- **Justicia es una entidad propia** en el sistema, llamada «Justicia (externo)», sin cuentas de dinero. Tiene su propia clave, con el permiso `justicia:denunciar`. Esa entidad la crea la Junta desde Bancos.
+- **Justicia registra la denuncia** con `POST /api/v1/justicia/denuncias` `{ sancion, dip, texto }`. Eso abre el recurso de la sanción, dentro del plazo de 30 días desde la notificación.
+- **Justicia consulta las sanciones** de una persona con `GET /api/v1/justicia/sanciones?dip=…`: solo las notificadas con plazo abierto.
+- **Los bancos siguen recibiendo los avisos** (sanción notificada, ejecución prevista, cobro de multa y revocación) para comunicarlos a sus clientes con su propio Gmail.
+
+Solo la persona sancionada o su tutor pueden denunciar. Justicia debe comprobarlo antes de presentar la denuncia; el sistema verifica que el DIP corresponda.

@@ -90,5 +90,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Cambiado
 - El SMI mensual lo cambia la Junta sin segunda persona. El saldo inembargable de las sanciones sigue al SMI (migración 0076).
 
+### Cambiado
+- Las denuncias de sanciones las registra Justicia, organismo externo, a través de su propia entidad y clave. Los bancos ya no presentan denuncias (migración 0077).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

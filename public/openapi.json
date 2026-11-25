@@ -8663,20 +8663,32 @@
         ]
       }
     },
-    "/api/v1/bk/sanciones/{id}/denuncia": {
+    "/api/v1/justicia/denuncias": {
       "post": {
-        "summary": "Denunciar una sanción (única vía de recurso)",
-        "description": "La persona sancionada, o su tutor, presenta denuncia a través de su banco. Abre el recurso. Solo dentro del plazo tras la notificación.",
+        "summary": "Registrar una denuncia presentada ante Justicia",
+        "description": "Solo el cliente de Justicia (organismo externo). Abre el recurso de una sanción notificada, dentro de plazo. Los bancos no pueden presentar denuncias.",
         "x-permiso": "justicia:denunciar",
-        "x-grupo": "Justicia",
+        "x-grupo": "Justicia (externo)",
         "security": [
           {
             "claveServidor": []
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": {
+                "sancion": "8c7b6a5d-0801-4f6a-9b8c-0d1e2f3a4b5c",
+                "dip": "23749931M",
+                "texto": "No reconozco la operación que motiva la sanción; adjunto justificantes."
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
-            "description": "Denuncia presentada",
+            "description": "Denuncia registrada",
             "content": {
               "application/json": {
                 "example": {
@@ -8688,25 +8700,46 @@
           "422": {
             "description": "Fuera de plazo, sanción no notificada o persona no válida"
           }
-        },
+        }
+      }
+    },
+    "/api/v1/justicia/sanciones": {
+      "get": {
+        "summary": "Sanciones notificadas de una persona",
+        "description": "Solo el cliente de Justicia. Lista las sanciones notificadas de una persona cuyo plazo para denunciar sigue abierto.",
+        "x-permiso": "justicia:denunciar",
+        "x-grupo": "Justicia (externo)",
+        "security": [
+          {
+            "claveServidor": []
+          }
+        ],
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
+            "name": "dip",
+            "in": "query",
             "required": true,
-            "description": "Identificador",
+            "description": "DIP de la persona",
             "schema": {
               "type": "string"
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "example": {
-                "dip": "23749931M",
-                "texto": "No reconozco la operación que motiva la sanción; adjunto justificantes."
+        "responses": {
+          "200": {
+            "description": "Sanciones",
+            "content": {
+              "application/json": {
+                "example": {
+                  "sanciones": [
+                    {
+                      "sancion": "8c7b6a5d-0801-4f6a-9b8c-0d1e2f3a4b5c",
+                      "tipo": "embargo",
+                      "importe": 200,
+                      "plazo_recurso_hasta": "2026-12-21T00:00:00Z"
+                    }
+                  ]
+                }
               }
             }
           }
