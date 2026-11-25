@@ -77,3 +77,12 @@ Todas las revocaciones generan un aviso para el banco.
 **Cobro de multas.** Las multas que se convierten en deuda son inembargables: el cobro automático solo toma lo que supere los 160 Pz de saldo protegido. Si el saldo está por debajo de ese mínimo, no se cobra ese día y se vuelve a intentar al siguiente. Las deudas que no son multas no cambian.
 
 **Pantalla.** Menú **Sanciones** del panel: proponer, notificar, programar la ejecución (con 5 horas de antelación), confirmar o anular recursos, ejecutar, levantar embargos y revocar. Muestra el IBAN de la cuenta, la cuenta del tutor en los casos junior, el destino, los plazos y el número de denuncias.
+
+
+## Actualización: el SMI es ajustable por la Junta (migración 0076)
+
+- El **SMI mensual** (`smi_mensual_completa_pz`) lo cambia la Junta desde Configuración, con motivo, sin segunda persona. Queda en la auditoría.
+- El **saldo inembargable** de las sanciones es el SMI mensual. Ya no tiene un valor propio: al cambiar el SMI, cambia el mínimo inembargable.
+- El **control de contratos** ya lee el SMI mensual en cada alta: un contrato por debajo del nuevo SMI se rechaza.
+- El **SMI semanal** (36,92) es solo informativo y no se actualiza solo.
+- La lista de preparación de la instalación (una consulta de diagnóstico, no una función del sistema) sigue mostrando «160 Pz»; no afecta al funcionamiento.

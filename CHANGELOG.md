@@ -87,5 +87,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 - Multas inembargables en el cobro automático: solo se cobra lo que supere los 160 Pz (migración 0075).
 - Pantalla de Sanciones en el panel de la Junta.
 
+### Cambiado
+- El SMI mensual lo cambia la Junta sin segunda persona. El saldo inembargable de las sanciones sigue al SMI (migración 0076).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
