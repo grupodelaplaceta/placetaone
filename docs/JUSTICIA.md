@@ -99,3 +99,18 @@ Todas las revocaciones generan un aviso para el banco.
 - **Los bancos siguen recibiendo los avisos** (sanción notificada, ejecución prevista, cobro de multa y revocación) para comunicarlos a sus clientes con su propio Gmail.
 
 Solo la persona sancionada o su tutor pueden denunciar. Justicia debe comprobarlo antes de presentar la denuncia; el sistema verifica que el DIP corresponda.
+
+
+## Anular o modificar deudas con acuerdo de votación (migración 0078)
+
+Solo la Junta actuando como Justicia. Cada actuación necesita:
+
+- **Justificación** de al menos 30 caracteres.
+- **Referencia del acuerdo de votación** de esa actuación concreta. Cada referencia solo puede usarse una vez, así que un acuerdo ampara una única anulación o modificación.
+
+- **Anular** (`POST /api/admin/deudas/{id}/anular`): el pendiente pasa a cero. Lo ya pagado se mantiene.
+- **Modificar** (`POST /api/admin/deudas/{id}/modificar` con `nuevo_pendiente`): fija el nuevo importe pendiente. Lo ya pagado se mantiene.
+
+Cada actuación queda en el historial (`GET /api/admin/deudas/actuaciones`) con el importe anterior y el nuevo, la justificación, el acuerdo y quién la hizo.
+
+**Pendiente:** no devuelve dinero ya pagado; si hay que devolverlo, es otra operación. Y la deuda anulada no cambia el estado de la sanción de la que pudiera venir.

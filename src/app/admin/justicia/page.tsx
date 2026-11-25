@@ -82,6 +82,59 @@ function FilaSancion({ s, avisar, recargar }: { s: Sancion; avisar: (m: string) 
   );
 }
 
+
+type Deuda = { id: string; ref?: string; account_id: string; principal: number; authorized_charges: number; paid: number; due_date: string | null; disputed: boolean };
+
+function DeudasPanel() {
+  const [deudas, setDeudas] = useState<Deuda[]>([]);
+  const [msg2, setMsg2] = useState("");
+  const cargar = async () => { setDeudas((await lista("/api/admin/r/debts")) as unknown as Deuda[]); };
+  useEffect(() => { cargar(); }, []);
+  const pendiente = (d: Deuda) => Number(d.principal) + Number(d.authorized_charges ?? 0) - Number(d.paid ?? 0);
+  const actuar = async (d: Deuda, tipo: "anular" | "modificar") => {
+    const justificacion = prompt("Justificación de la actuación (mínimo 30 caracteres):") ?? "";
+    if (!justificacion) return;
+    const referencia = prompt("Referencia del acuerdo de votación de esta actuación (se usa una sola vez):") ?? "";
+    if (!referencia) return;
+    let cuerpo: Record<string, unknown> = { justificacion, referencia };
+    if (tipo === "modificar") {
+      const nuevo = prompt(`Nuevo importe pendiente (ahora ${pendiente(d).toFixed(2)} Pz):`) ?? "";
+      if (nuevo === "") return;
+      cuerpo = { ...cuerpo, nuevo_pendiente: Number(nuevo) };
+    }
+    const r = await pide(`/api/admin/deudas/${d.id}/${tipo === "anular" ? "anular" : "modificar"}`, "POST", cuerpo);
+    setMsg2(r.ok ? "Actuación registrada con su acuerdo." : String(r.json.error ?? "No se pudo hacer"));
+    cargar();
+  };
+  const abiertas = deudas.filter((d) => pendiente(d) > 0);
+  return (
+    <section style={caja}>
+      <h2 style={{ marginTop: 0, fontSize: 18 }}>Deudas: anular o modificar con acuerdo</h2>
+      <p style={{ color: "#555", fontSize: 13 }}>Cada actuación exige una justificación y la referencia del acuerdo de votación de esa actuación concreta. Esa referencia solo puede usarse una vez.</p>
+      {msg2 && <p role="alert">{msg2}</p>}
+      <table width="100%" style={{ borderCollapse: "collapse", fontSize: 14 }}>
+        <thead><tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}><th>Referencia</th><th>Cuenta</th><th>Pendiente</th><th>Pagado</th><th>Vence</th><th></th></tr></thead>
+        <tbody>
+          {abiertas.length === 0 && <tr><td colSpan={6} style={{ color: "#777", padding: 12 }}>No hay deudas con importe pendiente.</td></tr>}
+          {abiertas.map((d) => (
+            <tr key={d.id} style={{ borderBottom: "1px solid #eee" }}>
+              <td>{String(d.ref ?? d.id).slice(0, 18)}</td>
+              <td style={{ fontSize: 12 }}>{d.account_id}</td>
+              <td>{pendiente(d).toFixed(2)} Pz{d.disputed && <span style={{ color: "#b00", fontSize: 12 }}> · en disputa</span>}</td>
+              <td>{Number(d.paid ?? 0).toFixed(2)} Pz</td>
+              <td>{d.due_date ?? "—"}</td>
+              <td style={{ whiteSpace: "nowrap" }}>
+                <button style={botonSec} onClick={() => actuar(d, "modificar")}>Modificar…</button>{" "}
+                <button style={botonPeligro} onClick={() => actuar(d, "anular")}>Anular…</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 export default function Justicia() {
   const [lista_, setLista] = useState<Sancion[]>([]);
   const [bancos, setBancos] = useState<Banco[]>([]);
@@ -153,6 +206,7 @@ export default function Justicia() {
         <button style={{ ...boton, marginTop: 12 }} onClick={proponer}>Proponer sanción</button>
       </section>
 
+      <DeudasPanel />
       <div style={{ ...caja, overflowX: "auto" }}>
         <table width="100%" style={{ borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
