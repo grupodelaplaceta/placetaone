@@ -10,7 +10,7 @@ import { DialogHost } from "./ui";
 const GRUPOS: { titulo: string; items: [string, string][] }[] = [
   { titulo: "Principal", items: [["/admin", "Panel"], ["/admin/previsiones", "Previsiones"], ["/admin/estado", "Estado"]] },
   { titulo: "Clientes y cuentas", items: [["/admin/clientes", "Clientes"], ["/admin/cuentas", "Cuentas"], ["/admin/operaciones", "Operaciones"], ["/admin/registros", "Registros"], ["/admin/disputas", "Disputas"]] },
-  { titulo: "Productos", items: [["/admin/productos", "Productos"], ["/admin/financiacion", "Financiación"], ["/admin/convocatorias", "Convocatorias de empresa"], ["/admin/normas", "Normas"]] },
+  { titulo: "Productos", items: [["/admin/productos", "Productos"], ["/admin/financiacion", "Financiación"], ["/admin/convocatorias", "Convocatorias de empresa"], ["/admin/justicia", "Sanciones"], ["/admin/normas", "Normas"]] },
   { titulo: "Fiscalidad", items: [["/admin/infraestructura", "Infraestructura"], ["/admin/fiscal", "Fiscalidad"], ["/admin/iva", "IVA"], ["/admin/destinos", "Destinos"]] },
   { titulo: "Entidades", items: [["/admin/comercios", "Comercios y categorías"], ["/admin/bancos", "Bancos"], ["/admin/numeracion", "Numeración"], ["/admin/api", "API"], ["/admin/api-bancos", "API bancos"], ["/admin/organigrama", "Organigrama"], ["/admin/institucional", "Institucional"], ["/admin/pasarela", "Pasarela y webhooks"], ["/admin/tasas", "Tasas e interbancarias"], ["/admin/empresas", "Empresas"], ["/admin/operaciones", "Pagos y reglas"], ["/admin/liquidacion", "Liquidación interbancaria"]] },
   { titulo: "Sistema", items: [["/admin/personal", "Personal"], ["/admin/procesos", "Procesos"], ["/admin/settings", "Configuración"], ["/admin/console", "Consola"]] },

@@ -83,5 +83,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Justicia: avisos para que cada banco notifique con su propio Gmail, ejecuciones programadas con 5 horas de antelación, recurso solo mediante denuncia, y revocación de sanciones con deshacer efectos (migración 0074).
 
+### Añadido
+- Multas inembargables en el cobro automático: solo se cobra lo que supere los 160 Pz (migración 0075).
+- Pantalla de Sanciones en el panel de la Junta.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.

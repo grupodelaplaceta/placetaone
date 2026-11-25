@@ -37,9 +37,8 @@
 
 ## Lo que NO está hecho
 
-- **El cobro automático de multas a cuentas personales no respeta todavía el saldo inembargable.** Una multa convertida en deuda puede cobrarse entera. Hay que ajustar el cobro automático antes de usar multas en producción.
 - **No hay rol judicial propio.** Hoy solo la Junta opera las sanciones.
-- **No hay pantalla en el panel.** Las sanciones se gestionan por API.
+- **Retirar una denuncia** no está implementado.
 - **El aviso a la persona no lo envía el sistema.** La Junta registra la notificación.
 - **No hay canal propio para recurrir.** Lo registra la Junta en nombre de la persona.
 
@@ -70,4 +69,11 @@ Todas las revocaciones generan un aviso para el banco.
 - La **denuncia la presenta la persona a través de su banco**. Placeta no tiene canal propio para ello.
 - **Retirar una denuncia** no está implementado.
 - **El cobro automático de multas a cuentas personales no respeta todavía el saldo inembargable.**
-- **No hay pantalla en el panel.** Las sanciones se gestionan por API.
+- **Retirar una denuncia** no está implementado.
+
+
+## Actualización: cobro inembargable y pantalla (migración 0075)
+
+**Cobro de multas.** Las multas que se convierten en deuda son inembargables: el cobro automático solo toma lo que supere los 160 Pz de saldo protegido. Si el saldo está por debajo de ese mínimo, no se cobra ese día y se vuelve a intentar al siguiente. Las deudas que no son multas no cambian.
+
+**Pantalla.** Menú **Sanciones** del panel: proponer, notificar, programar la ejecución (con 5 horas de antelación), confirmar o anular recursos, ejecutar, levantar embargos y revocar. Muestra el IBAN de la cuenta, la cuenta del tutor en los casos junior, el destino, los plazos y el número de denuncias.
