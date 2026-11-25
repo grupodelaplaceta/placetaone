@@ -77,5 +77,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Añadido
 - Sanciones: multas, incautaciones y embargos, con doble firma, notificación, recurso, saldo inembargable de 160 Pz y firma automática diaria (migración 0072, docs/JUSTICIA.md). Solo la Junta. No ejecutado en PostgreSQL.
 
+### Cambiado
+- Sanciones sin doble aprobación: la Junta propone y ejecuta. Junior: la sanción va a la cuenta del tutor. Joven: sanciones conforme a sus normas. Multas a administración o tributos (migración 0073).
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
