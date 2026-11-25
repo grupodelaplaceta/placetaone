@@ -74,5 +74,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado
 ### Cambiado
 - Pasar a Placeta Joven: la cuenta junior pasa a personal, el tutor se retira, y la cuenta Joven es nueva y aislada (migración 0071).
 
+### Añadido
+- Sanciones: multas, incautaciones y embargos, con doble firma, notificación, recurso, saldo inembargable de 160 Pz y firma automática diaria (migración 0072, docs/JUSTICIA.md). Solo la Junta. No ejecutado en PostgreSQL.
+
 ### Nota
 El proyecto no tiene todavía historial de commits convencionales (no es un repositorio Git). Las entradas anteriores a esta sección no se han reconstruido.
